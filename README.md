@@ -1,6 +1,7 @@
-# Prometheus.jl
+# Prometheus.jl - Prometheus client for Julia
 
-*A [Prometheus](https://prometheus.io/) client for Julia*
+[![ci-status](https://github.com/fredrikekre/Prometheus.jl/actions/workflows/CI.yml/badge.svg?event=push)](https://github.com/fredrikekre/Prometheus.jl/actions/workflows/CI.yml)
+[![codecov-status](https://codecov.io/github/fredrikekre/Prometheus.jl/graph/badge.svg)](https://codecov.io/github/fredrikekre/Prometheus.jl)
 
 ## Quickstart
 
