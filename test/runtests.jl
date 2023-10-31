@@ -323,6 +323,8 @@ end
             return Prometheus.expose(http)
         elseif http.message.target == "/metrics/reg"
             return Prometheus.expose(http, Prometheus.DEFAULT_REGISTRY)
+        elseif http.message.target == "/metrics/nogzip"
+            return Prometheus.expose(http; compress=false)
         else
             HTTP.setstatus(http, 404)
             HTTP.startwrite(http)
@@ -340,6 +342,19 @@ end
     # Bad URI
     r_bad = HTTP.request("GET", "http://localhost:8123"; status_exception=false)
     @test r_bad.status == 404
+    # Compression
+    for enc in ("gzip", "br, compress, gzip", "br;q=1.0, gzip;q=0.8, *;q=0.1")
+        r_gzip = HTTP.request(
+            "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => enc]
+        )
+        @test HTTP.header(r_gzip, "Content-Encoding") == "gzip"
+        @test String(r_gzip.body) == reference_output # HTTP.jl decompresses gzip
+        r_nogzip = HTTP.request(
+            "GET", "http://localhost:8123/metrics/nogzip", ["Accept-Encoding" => enc]
+        )
+        @test HTTP.header(r_nogzip, "Content-Encoding") != "gzip"
+        @test String(r_nogzip.body) == reference_output # HTTP.jl decompresses gzip
+    end
     # Clean up
     close(server)
     wait(server)

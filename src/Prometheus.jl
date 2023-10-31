@@ -1,6 +1,8 @@
 module Prometheus
 
+using CodecZlib: GzipCompressorStream
 using HTTP: HTTP
+using SimpleBufferStream: BufferStream
 using Sockets: Sockets
 
 abstract type Collector end
@@ -49,6 +51,9 @@ if !isdefined(Base, Symbol("@atomic")) # v1.7.0
             end
         end
     end
+end
+if !isdefined(Base, :eachsplit) # v1.8.0
+    const eachsplit = split
 end
 
 
@@ -505,24 +510,55 @@ end
 
 const CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
 
+function gzip_accepted(http::HTTP.Stream)
+    accept_encoding = HTTP.header(http.message, "Accept-Encoding")
+    for enc in eachsplit(accept_encoding, ',')
+        if lowercase(strip(first(eachsplit(enc, ';')))) == "gzip"
+            return true
+        end
+    end
+    return false
+end
+
 """
-    expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY)
+    expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; kwargs...)
 
 Export all metrics in `reg` by writing them to the HTTP stream `http`.
 
 The caller is responsible for checking e.g. the HTTP method and URI target. For
 HEAD requests this method do not write a body, however.
 """
-function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY)
-    # TODO: Handle Accept request header
-    # TODO: Compression if requested/supported
+function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; compress::Bool=true)
+    # TODO: Handle Accept request header for different formats?
+    # Compress by default if client supports it and user haven't disabled it
+    if compress
+        compress = gzip_accepted(http)
+    end
+    # Create the response
     HTTP.setstatus(http, 200)
     HTTP.setheader(http, "Content-Type" => CONTENT_TYPE_LATEST)
+    if compress
+        HTTP.setheader(http, "Content-Encoding" => "gzip")
+    end
     HTTP.startwrite(http)
-    # The user is repsonsible for making sure that e.g. target and method is
+    # The user is responsible for making sure that e.g. target and method is
     # correct, but at least we skip writing the body for HEAD requests.
     if http.message.method != "HEAD"
-        expose_io(http, reg)
+        if compress
+            buf = BufferStream()
+            gzstream = GzipCompressorStream(buf)
+            tsk = @async try
+                expose_io(gzstream, reg)
+            finally
+                # Close the compressor stream to free resources in zlib and
+                # to let the write(http, buf) below finish.
+                close(gzstream)
+            end
+            write(http, buf)
+            wait(tsk)
+        else
+            expose_io(http, reg)
+        end
     end
     return
 end
