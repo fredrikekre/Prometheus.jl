@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 First stable release of Prometheus.jl:
 
- - Supported collectors: Counter, Gauge, Summary
+ - Supported basic collectors: Counter, Gauge, Summary
+ - GCCollector for metrics about allocations and garbage collection
  - Support for default and custom collector registries
  - Support for metric labeling
  - Support for exposing metrics to file and over HTTP

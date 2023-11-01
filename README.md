@@ -28,13 +28,20 @@
 
 3. Visit <http://localhost:8000> in your browser. You will see something like the following
    ```
+   # HELP gc_alloc_bytes_total Total number of allocated bytes
+   # TYPE gc_alloc_bytes_total counter
+   gc_alloc_bytes_total 365578814
+
+   [...]
+
    # HELP request_count Number of handled requests
    # TYPE request_count counter
    request_count 1
    ```
-   which is how the counter is presented when Prometheus scrapes the metrics.
-   Every time you refresh, the counter will increment its value.
-   `close(server)` will shutdown the server.
+   The default output contains metrics about allocations and garbage collections (see
+   [GCCollector](#gccollector)), as well as the request counter that we added ourselves.
+   Every time you refresh, the counter will increment its value. `close(server)` will
+   shutdown the server.
 
 
 ## Collectors
@@ -65,6 +72,13 @@ See <https://prometheus.io/docs/concepts/metric_types/#summary> for details.
 
 Supported methods:
  - `Prometheus.observe(summary, v)`: record the observed value `v`.
+
+### GCCollector
+
+A collector that exports metrics about allocations and garbage collection (for example
+number of allocations, number of bytes allocated, time spent in garbage collection, etc).
+These metrics have the `gc_` prefix in their name.
+
 
 ## Labels
 
