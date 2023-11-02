@@ -626,8 +626,11 @@ function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; co
     return
 end
 
+include("process_collector.jl")
+
 # Default registry and collectors
 const DEFAULT_REGISTRY = CollectorRegistry()
 const GC_COLLECTOR = GCCollector(DEFAULT_REGISTRY)
+const PROCESS_COLLECTOR = ProcessCollector(DEFAULT_REGISTRY)
 
 end # module Prometheus

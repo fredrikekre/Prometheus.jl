@@ -13,6 +13,8 @@ First stable release of Prometheus.jl:
 
  - Supported basic collectors: Counter, Gauge, Summary
  - GCCollector for metrics about allocations and garbage collection
+ - ProcessCollector for process metrics such as CPU time and I/O operations (requires the
+   /proc file system).
  - Support for default and custom collector registries
  - Support for metric labeling
  - Support for exposing metrics to file and over HTTP

@@ -1,6 +1,6 @@
 using HTTP: HTTP
 using Prometheus: Prometheus
-using Test: @test, @test_throws, @testset
+using Test: @test, @test_logs, @test_throws, @testset
 
 @testset "Prometheus.CollectorRegistry" begin
     empty!(Prometheus.DEFAULT_REGISTRY.collectors)
@@ -316,6 +316,78 @@ end
         """,
         sprint(Prometheus.expose_metric, gc_alloc_total),
     )
+end
+
+@testset "Prometheus.ProcessCollector" begin
+    r = Prometheus.CollectorRegistry()
+    c = Prometheus.ProcessCollector(r)
+    @test c in r.collectors
+    metrics = Prometheus.collect(c)
+    procfs_available = c.system_boot_time > 0
+    if procfs_available
+        # Prometheus.expose_metric(...)
+        str = sprint(Prometheus.expose_io, r)
+        @test occursin(
+            r"""
+            # HELP process_cpu_seconds_total Total CPU time \(user and system mode\) in seconds.
+            # TYPE process_cpu_seconds_total counter
+            process_cpu_seconds_total{mode="system"} [0-9\.]+
+            process_cpu_seconds_total{mode="user"} [0-9\.]+
+            # HELP process_io_rchar_bytes_total Total number of bytes read in bytes \(rchar from /proc/\[pid\]/io\).
+            # TYPE process_io_rchar_bytes_total counter
+            process_io_rchar_bytes_total \d+
+            # HELP process_io_read_bytes_total Total number of bytes read from the file system \(read_bytes from /proc/\[pid\]/io\).
+            # TYPE process_io_read_bytes_total counter
+            process_io_read_bytes_total \d+
+            # HELP process_io_syscr_total Total number of read I/O operations \(syscalls\) \(syscr from /proc/\[pid\]/io\).
+            # TYPE process_io_syscr_total counter
+            process_io_syscr_total \d+
+            # HELP process_io_syscw_total Total number of write I/O operations \(syscalls\) \(syscw from /proc/\[pid\]/io\).
+            # TYPE process_io_syscw_total counter
+            process_io_syscw_total \d+
+            # HELP process_io_wchar_bytes_total Total number of bytes written in bytes \(wchar from /proc/\[pid\]/io\).
+            # TYPE process_io_wchar_bytes_total counter
+            process_io_wchar_bytes_total \d+
+            # HELP process_io_write_bytes_total Total number of bytes written to the file system \(write_bytes from /proc/\[pid\]/io\).
+            # TYPE process_io_write_bytes_total counter
+            process_io_write_bytes_total \d+
+            # HELP process_open_fds Number of open file descriptors.
+            # TYPE process_open_fds gauge
+            process_open_fds \d+
+            # HELP process_resident_memory_bytes Resident memory size \(RSS\) in bytes.
+            # TYPE process_resident_memory_bytes gauge
+            process_resident_memory_bytes \d+
+            # HELP process_start_time_seconds Start time since unix epoch in seconds.
+            # TYPE process_start_time_seconds gauge
+            process_start_time_seconds .*
+            # HELP process_virtual_memory_bytes Virtual memory size in bytes.
+            # TYPE process_virtual_memory_bytes gauge
+            process_virtual_memory_bytes \d+
+            """,
+            sprint(Prometheus.expose_io, r),
+        )
+    else
+        @test isempty(metrics)
+    end
+    # Test that pid function works
+    procc = Prometheus.ProcessCollector(nothing, () -> getpid())
+    metrics = Prometheus.collect(procc)
+    if procfs_available
+        @test length(metrics) > 0
+    else
+        @test length(metrics) == 0
+    end
+    # Not a pid
+    empty!(Prometheus.DEFAULT_REGISTRY.collectors)
+    procc = Prometheus.ProcessCollector(() -> "notapid")
+    empty!(Prometheus.DEFAULT_REGISTRY.collectors)
+    metrics = @test_logs (:error, r"/proc/notapid/ does not exist") Prometheus.collect(procc)
+    @test length(metrics) == 0
+    # Pid function error
+    empty!(Prometheus.DEFAULT_REGISTRY.collectors)
+    procc = Prometheus.ProcessCollector(() -> error())
+    metrics = @test_logs (:error, r"pid from the lambda") Prometheus.collect(procc)
+    @test length(metrics) == 0
 end
 
 @testset "Prometheus.expose(::Union{String, IO})" begin
