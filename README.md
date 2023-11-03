@@ -4,6 +4,8 @@
 |:------------------------- |:------------------------------------------------------- |
 | [![][docs-img]][docs-url] | [![][ci-img]][ci-url] [![][coverage-img]][coverage-url] |
 
+Prometheus.jl is a Julia client for [Prometheus](https://prometheus.io/).
+
 ## Quickstart
 
 1. Install Prometheus.jl and [HTTP.jl](https://github.com/JuliaWeb/HTTP.jl)
