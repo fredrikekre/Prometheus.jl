@@ -377,17 +377,19 @@ end
     else
         @test length(metrics) == 0
     end
-    # Not a pid
-    empty!(Prometheus.DEFAULT_REGISTRY.collectors)
-    procc = Prometheus.ProcessCollector(() -> "notapid")
-    empty!(Prometheus.DEFAULT_REGISTRY.collectors)
-    metrics = @test_logs (:error, r"/proc/notapid/ does not exist") Prometheus.collect(procc)
-    @test length(metrics) == 0
-    # Pid function error
-    empty!(Prometheus.DEFAULT_REGISTRY.collectors)
-    procc = Prometheus.ProcessCollector(() -> error())
-    metrics = @test_logs (:error, r"pid from the lambda") Prometheus.collect(procc)
-    @test length(metrics) == 0
+    if procfs_available
+        # Not a pid
+        empty!(Prometheus.DEFAULT_REGISTRY.collectors)
+        procc = Prometheus.ProcessCollector(() -> "notapid")
+        empty!(Prometheus.DEFAULT_REGISTRY.collectors)
+        metrics = @test_logs (:error, r"/proc/notapid/ does not exist") Prometheus.collect(procc)
+        @test length(metrics) == 0
+        # Pid function error
+        empty!(Prometheus.DEFAULT_REGISTRY.collectors)
+        procc = Prometheus.ProcessCollector(() -> error())
+        metrics = @test_logs (:error, r"pid from the lambda") Prometheus.collect(procc)
+        @test length(metrics) == 0
+    end
 end
 
 @testset "Prometheus.expose(::Union{String, IO})" begin
