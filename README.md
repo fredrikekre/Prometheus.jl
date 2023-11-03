@@ -38,10 +38,10 @@
    # TYPE request_count counter
    request_count 1
    ```
-   The default output contains metrics about allocations and garbage collections (see
-   [GCCollector](#gccollector)), as well as the request counter that we added ourselves.
-   Every time you refresh, the counter will increment its value. `close(server)` will
-   shutdown the server.
+   The default output contains some default metrics (see [GCCollector](#gccollector) and
+   [ProcessCollector](#processcollector)), as well as the request counter that we added
+   ourselves. Every time you refresh, the counter will increment its value. `close(server)`
+   will shutdown the server.
 
 
 ## Collectors
@@ -78,6 +78,13 @@ Supported methods:
 A collector that exports metrics about allocations and garbage collection (for example
 number of allocations, number of bytes allocated, time spent in garbage collection, etc).
 These metrics have the `gc_` prefix in their name.
+
+### ProcessCollector
+
+A collector that exports metrics about a running process, for example CPU seconds and
+metrics about I/O operations. Metrics from this collector have the `process_` prefix in
+their name. This collector is only available on Linux since it requires the `/proc` file
+system.
 
 
 ## Labels

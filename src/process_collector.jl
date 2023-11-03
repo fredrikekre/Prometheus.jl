@@ -1,0 +1,211 @@
+#################################
+# ProcessCollector <: Collector #
+#################################
+
+mutable struct ProcessCollector <: Collector
+    @const pid_f::Function
+    @const system_boot_time::Int
+    @const clock_ticks_per_second::Int
+    @const pagesize::Int
+    function ProcessCollector(
+            registry::Union{CollectorRegistry, Nothing}, pid_f::Function = () -> "self",
+        )
+        # Read boot time as a way to check if /proc is available and readable
+        system_boot_time = 0
+        try
+            proc_stat = read("/proc/stat", String)
+            m = match(r"^btime\s+(\d+)"m, proc_stat)::RegexMatch
+            system_boot_time = parse(Int, m.captures[1]::AbstractString)
+        catch e
+            @debug "ProcessCollector: /proc is not available or not readable, disabling." e
+        end
+        # Fetch clock ticks per second
+        clock_ticks_per_second = 0
+        try
+            cmd = pipeline(`getconf CLK_TCK`, stderr=devnull)
+            str = read(cmd, String)
+            clock_ticks_per_second = parse(Int, strip(str))
+        catch e
+            if system_boot_time > 0
+                @debug "ProcessCollector: /proc is available but could not read " *
+                       "CLK_TCK from getconf, partially disabling." e
+            end
+        end
+        # Fetch pagesize
+        pagesize = 0
+        try
+            cmd = pipeline(`getconf PAGESIZE`, stderr=devnull)
+            str = read(cmd, String)
+            pagesize = parse(Int, strip(str))
+        catch e
+            if system_boot_time > 0
+                @debug "ProcessCollector: /proc is available but could not read " *
+                       "PAGESIZE from getconf, partially disabling." e
+            end
+        end
+        # Create the collector
+        procc = new(pid_f, system_boot_time, clock_ticks_per_second, pagesize)
+        if registry !== nothing
+            register(registry, procc)
+        end
+        return procc
+    end
+end
+ProcessCollector(pid_f::Function = () -> "self") = ProcessCollector(DEFAULT_REGISTRY, pid_f)
+
+function metric_names(::ProcessCollector)
+    return (
+        "process_cpu_seconds_total", "process_start_time_seconds",
+        "process_virtual_memory_bytes", "process_resident_memory_bytes", "process_open_fds",
+        "process_io_rchar_bytes_total", "process_io_wchar_bytes_total",
+        "process_io_syscr_total", "process_io_syscw_total", "process_io_read_bytes_total",
+        "process_io_write_bytes_total"
+    )
+end
+
+function collect!(metrics::Vector, procc::ProcessCollector)
+    # If we could not read /proc just return early
+    procc.system_boot_time == 0 && return metrics
+    # Fetch the pid
+    pid = try
+        strip(string(procc.pid_f()))
+    catch e
+        @error "ProcessCollector: could not look up the pid from the lambda" e
+        return metrics
+    end
+    if isempty(pid) || !isdir("/proc/$(pid)")
+        @error "ProcessCollector: invalid pid '$(pid)' from lamba: /proc/$(pid)/ does not exist"
+        return metrics
+    end
+    # Read /proc/$(pid)/stat
+    proc_stat = nothing
+    try
+        proc_stat = read("/proc/$(pid)/stat", String)
+    catch e
+        @error "ProcessCollector: could not read /proc/$(pid)/stat" e
+    end
+    if proc_stat !== nothing
+        fields = split(split(proc_stat, ')')[end]) # This strips off the first two fields
+        # CPU time and start time requires clock_ticks_per_second
+        if procc.clock_ticks_per_second > 0
+            utime = parse(Int, fields[14 - 2]) / procc.clock_ticks_per_second
+            stime = parse(Int, fields[15 - 2]) / procc.clock_ticks_per_second
+            proc_cpu_seconds = Metric(
+                "counter", "process_cpu_seconds_total",
+                "Total CPU time (user and system mode) in seconds.",
+                LabelNames(["mode"]),
+                [
+                    Sample(nothing, LabelValues(["system"]), stime),
+                    Sample(nothing, LabelValues(["user"]), utime),
+                ],
+            )
+            push!(metrics, proc_cpu_seconds)
+            # Process start time
+            starttime = parse(Int, fields[22 - 2]) / procc.clock_ticks_per_second
+            proc_start_time = Metric(
+                "gauge", "process_start_time_seconds",
+                "Start time since unix epoch in seconds.", nothing,
+                Sample(nothing, nothing, starttime + procc.system_boot_time),
+            )
+            push!(metrics, proc_start_time)
+        end
+        # Virtual memory
+        vsize = parse(Int, fields[23 - 2])
+        proc_virtual_memory = Metric(
+            "gauge", "process_virtual_memory_bytes", "Virtual memory size in bytes.", nothing,
+            Sample(nothing, nothing, vsize),
+        )
+        push!(metrics, proc_virtual_memory)
+        if procc.pagesize > 0
+            # Resident memory
+            rss = parse(Int, fields[24 - 2])
+            proc_resident_memory = Metric(
+                "gauge", "process_resident_memory_bytes",
+                "Resident memory size (RSS) in bytes.", nothing,
+                Sample(nothing, nothing, rss * procc.pagesize),
+            )
+            push!(metrics, proc_resident_memory)
+        end
+    end
+    # Read /proc/$(pid)/fds
+    proc_fd = nothing
+    try
+        proc_fd = length(readdir("/proc/$(pid)/fd"))
+    catch e
+        @error "ProcessCollector: could not read /proc/$(pid)/fd" e
+    end
+    if proc_fd !== nothing
+        # Open file descriptors
+        proc_open_fds = Metric(
+            "gauge", "process_open_fds",
+            "Number of open file descriptors.", nothing,
+            Sample(nothing, nothing, proc_fd),
+        )
+        push!(metrics, proc_open_fds)
+        # TODO: Maybe add maximum open fds from /proc/$(pid)/limits like the Python client
+    end
+    # Read /proc/$(pid)/io
+    proc_io = nothing
+    try
+        proc_io = read("/proc/$(pid)/io", String)
+    catch e
+        @error "ProcessCollector: could not read /proc/$(pid)/io" e
+    end
+    if proc_io !== nothing
+        rchar = match(r"rchar:\s+(\d+)", proc_io)
+        if rchar !== nothing
+            proc_io_rchar = Metric(
+                "counter", "process_io_rchar_bytes_total",
+                "Total number of bytes read in bytes (rchar from /proc/[pid]/io).", nothing,
+                Sample(nothing, nothing, parse(Int, rchar.captures[1]::AbstractString)),
+            )
+            push!(metrics, proc_io_rchar)
+        end
+        wchar = match(r"wchar:\s+(\d+)", proc_io)
+        if wchar !== nothing
+            proc_io_wchar = Metric(
+                "counter", "process_io_wchar_bytes_total",
+                "Total number of bytes written in bytes (wchar from /proc/[pid]/io).", nothing,
+                Sample(nothing, nothing, parse(Int, wchar.captures[1]::AbstractString)),
+            )
+            push!(metrics, proc_io_wchar)
+        end
+        syscr = match(r"syscr:\s+(\d+)", proc_io)
+        if syscr !== nothing
+            proc_io_syscr = Metric(
+                "counter", "process_io_syscr_total",
+                "Total number of read I/O operations (syscalls) (syscr from /proc/[pid]/io).", nothing,
+                Sample(nothing, nothing, parse(Int, syscr.captures[1]::AbstractString)),
+            )
+            push!(metrics, proc_io_syscr)
+        end
+        syscw = match(r"syscw:\s+(\d+)", proc_io)
+        if syscw !== nothing
+            proc_io_syscw = Metric(
+                "counter", "process_io_syscw_total",
+                "Total number of write I/O operations (syscalls) (syscw from /proc/[pid]/io).", nothing,
+                Sample(nothing, nothing, parse(Int, syscw.captures[1]::AbstractString)),
+            )
+            push!(metrics, proc_io_syscw)
+        end
+        read_bytes = match(r"read_bytes:\s+(\d+)", proc_io)
+        if read_bytes !== nothing
+            proc_io_read_bytes = Metric(
+                "counter", "process_io_read_bytes_total",
+                "Total number of bytes read from the file system (read_bytes from /proc/[pid]/io).", nothing,
+                Sample(nothing, nothing, parse(Int, read_bytes.captures[1]::AbstractString)),
+            )
+            push!(metrics, proc_io_read_bytes)
+        end
+        write_bytes = match(r"write_bytes:\s+(\d+)", proc_io)
+        if write_bytes !== nothing
+            proc_io_write_bytes = Metric(
+                "counter", "process_io_write_bytes_total",
+                "Total number of bytes written to the file system (write_bytes from /proc/[pid]/io).", nothing,
+                Sample(nothing, nothing, parse(Int, write_bytes.captures[1]::AbstractString)),
+            )
+            push!(metrics, proc_io_write_bytes)
+        end
+    end
+    return metrics
+end
