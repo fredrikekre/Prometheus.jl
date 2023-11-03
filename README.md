@@ -1,7 +1,8 @@
 # Prometheus.jl - Prometheus client for Julia
 
-[![ci-status](https://github.com/fredrikekre/Prometheus.jl/actions/workflows/CI.yml/badge.svg?event=push)](https://github.com/fredrikekre/Prometheus.jl/actions/workflows/CI.yml)
-[![codecov-status](https://codecov.io/github/fredrikekre/Prometheus.jl/graph/badge.svg)](https://codecov.io/github/fredrikekre/Prometheus.jl)
+| **Documentation**         | **Build Status**                                        |
+|:------------------------- |:------------------------------------------------------- |
+| [![][docs-img]][docs-url] | [![][ci-img]][ci-url] [![][coverage-img]][coverage-url] |
 
 ## Quickstart
 
@@ -110,3 +111,10 @@ Supported methods:
  - `Prometheus.clear(family)`: clear all child collectors.
 
 ## Registries
+
+[docs-img]: https://img.shields.io/badge/docs-latest%20release-blue.svg
+[docs-url]: https://fredrikekre.github.io/Prometheus.jl/
+[ci-img]: https://github.com/fredrikekre/Prometheus.jl/actions/workflows/CI.yml/badge.svg?event=push
+[ci-url]: https://github.com/fredrikekre/Prometheus.jl/actions/workflows/CI.yml
+[coverage-img]: https://codecov.io/github/fredrikekre/Prometheus.jl/graph/badge.svg
+[coverage-url]: https://codecov.io/github/fredrikekre/Prometheus.jl
