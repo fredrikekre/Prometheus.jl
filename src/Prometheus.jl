@@ -146,16 +146,16 @@ function metric_names(counter::Counter)
 end
 
 """
-    Prometheus.inc(c::Counter, v = 1)
+    Prometheus.inc(counter::Counter, v = 1)
 
-Increment the value of the counter `c` with `v`.
+Increment the value of the counter with `v`.
 `v` must be non-negative, and defaults to `v = 1`.
 """
-function inc(m::Counter, v = 1.0)
+function inc(counter::Counter, v = 1.0)
     if v < 0
         error("counting backwards")
     end
-    @atomic m.value += v
+    @atomic counter.value += v
     return nothing
 end
 
@@ -222,44 +222,44 @@ function metric_names(gauge::Gauge)
 end
 
 """
-    Prometheus.inc(g::Gauge, v = 1)
+    Prometheus.inc(gauge::Gauge, v = 1)
 
-Increment the value of the gauge `g` with `v`.
+Increment the value of the gauge with `v`.
 `v` defaults to `v = 1`.
 """
-function inc(m::Gauge, v = 1.0)
-    @atomic m.value += v
+function inc(gauge::Gauge, v = 1.0)
+    @atomic gauge.value += v
     return nothing
 end
 
 """
-    Prometheus.dec(g::Gauge, v = 1)
+    Prometheus.dec(gauge::Gauge, v = 1)
 
-Decrement the value of the gauge `g` with `v`.
+Decrement the value of the gauge with `v`.
 `v` defaults to `v = 1`.
 """
-function dec(m::Gauge, v = 1.0)
-    @atomic m.value -= v
+function dec(gauge::Gauge, v = 1.0)
+    @atomic gauge.value -= v
     return nothing
 end
 
 """
-    Prometheus.set(g::Gauge, v)
+    Prometheus.set(gauge::Gauge, v)
 
 Set the value of the gauge to `v`.
 """
-function set(m::Gauge, v)
-    @atomic m.value = v
+function set(gauge::Gauge, v)
+    @atomic gauge.value = v
     return nothing
 end
 
 """
-    Prometheus.set_to_current_time(g::Gauge)
+    Prometheus.set_to_current_time(gauge::Gauge)
 
 Set the value of the gauge to the current unixtime in seconds.
 """
-function set_to_current_time(m::Gauge)
-    @atomic m.value = time()
+function set_to_current_time(gauge::Gauge)
+    @atomic gauge.value = time()
     return nothing
 end
 
