@@ -33,8 +33,8 @@ GCCollector(; kwargs...)
 
 function metric_names(::GCCollector)
     return (
-        "gc_alloc_total", "gc_free_total", "gc_alloc_bytes_total",
-        "gc_live_bytes", "gc_seconds_total", "gc_collections_total",
+        "julia_gc_alloc_total", "julia_gc_free_total", "julia_gc_alloc_bytes_total",
+        "julia_gc_live_bytes", "julia_gc_seconds_total", "julia_gc_collections_total",
     )
 end
 
@@ -45,7 +45,7 @@ function collect!(metrics::Vector, ::GCCollector)
     # Push all the metrics
     push!(metrics,
         Metric(
-            "counter", "gc_alloc_total", "Total number of allocations (calls to malloc, realloc, etc)",
+            "counter", "julia_gc_alloc_total", "Total number of allocations (calls to malloc, realloc, etc)",
             LabelNames(["type"]),
             [
                 Sample(nothing, LabelValues(["bigalloc"]), gc_num.bigalloc),
@@ -55,23 +55,23 @@ function collect!(metrics::Vector, ::GCCollector)
             ],
         ),
         Metric(
-            "counter", "gc_free_total", "Total number of calls to free()",
+            "counter", "julia_gc_free_total", "Total number of calls to free()",
             nothing, Sample(nothing, nothing, gc_num.freecall),
         ),
         Metric(
-            "counter", "gc_alloc_bytes_total", "Total number of allocated bytes", nothing,
+            "counter", "julia_gc_alloc_bytes_total", "Total number of allocated bytes", nothing,
             Sample(nothing, nothing, Base.gc_total_bytes(gc_num)),
         ),
         Metric(
-            "gauge", "gc_live_bytes", "Current number of live bytes", nothing,
+            "gauge", "julia_gc_live_bytes", "Current number of live bytes", nothing,
             Sample(nothing, nothing, gc_live_bytes),
         ),
         Metric(
-            "counter", "gc_seconds_total", "Total time spent in garbage collection", nothing,
+            "counter", "julia_gc_seconds_total", "Total time spent in garbage collection", nothing,
             Sample(nothing, nothing, gc_num.total_time / 10^9), # [ns] to [s]
         ),
         Metric(
-            "counter", "gc_collections_total", "Total number of calls to garbage collection",
+            "counter", "julia_gc_collections_total", "Total number of calls to garbage collection",
             LabelNames(["type"]),
             [
                 Sample(nothing, LabelValues(["full"]), gc_num.full_sweep),

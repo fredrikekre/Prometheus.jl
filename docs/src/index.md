@@ -129,7 +129,7 @@ Prometheus.observe(::Prometheus.Summary, ::Any)
 
 A collector that exports metrics about allocations and garbage collection (for example
 number of allocations, number of bytes allocated, time spent in garbage collection, etc).
-These metrics have the `gc_` prefix in their name.
+These metrics have the `julia_gc_` prefix in their name.
 
 A `GCCollector` is registered automatically with the default registry, see
 [Default registry](@ref) for more details.

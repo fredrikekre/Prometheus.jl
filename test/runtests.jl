@@ -290,27 +290,27 @@ end
     x = zeros(1024^2); x = nothing; GC.gc(); GC.gc()
     new_stats = Base.gc_num()
     @test length(metrics) == 6
-    gc_alloc_total = metrics[findfirst(x -> x.metric_name == "gc_alloc_total", metrics)]
+    gc_alloc_total = metrics[findfirst(x -> x.metric_name == "julia_gc_alloc_total", metrics)]
     @test old_stats.bigalloc <= gc_alloc_total.samples[1].value <= new_stats.bigalloc
     @test old_stats.malloc <= gc_alloc_total.samples[2].value <= new_stats.malloc
     @test old_stats.poolalloc <= gc_alloc_total.samples[3].value <= new_stats.poolalloc
     @test old_stats.realloc <= gc_alloc_total.samples[4].value <= new_stats.realloc
-    gc_free_total = metrics[findfirst(x -> x.metric_name == "gc_free_total", metrics)]
+    gc_free_total = metrics[findfirst(x -> x.metric_name == "julia_gc_free_total", metrics)]
     @test old_stats.freecall <= gc_free_total.samples.value <= new_stats.freecall
-    gc_alloc_bytes_total = metrics[findfirst(x -> x.metric_name == "gc_alloc_bytes_total", metrics)]
+    gc_alloc_bytes_total = metrics[findfirst(x -> x.metric_name == "julia_gc_alloc_bytes_total", metrics)]
     @test Base.gc_total_bytes(old_stats) <= gc_alloc_bytes_total.samples.value <= Base.gc_total_bytes(new_stats)
-    gc_seconds_total = metrics[findfirst(x -> x.metric_name == "gc_seconds_total", metrics)]
+    gc_seconds_total = metrics[findfirst(x -> x.metric_name == "julia_gc_seconds_total", metrics)]
     @test old_stats.total_time / 10^9 <= gc_seconds_total.samples.value <= new_stats.total_time / 10^9
     # Prometheus.expose_metric(...)
     str = sprint(Prometheus.expose_metric, gc_alloc_total)
     @test occursin(
         r"""
-        # HELP gc_alloc_total Total number of allocations \(calls to malloc, realloc, etc\)
-        # TYPE gc_alloc_total counter
-        gc_alloc_total{type="bigalloc"} \d+
-        gc_alloc_total{type="malloc"} \d+
-        gc_alloc_total{type="poolalloc"} \d+
-        gc_alloc_total{type="realloc"} \d+
+        # HELP julia_gc_alloc_total Total number of allocations \(calls to malloc, realloc, etc\)
+        # TYPE julia_gc_alloc_total counter
+        julia_gc_alloc_total{type="bigalloc"} \d+
+        julia_gc_alloc_total{type="malloc"} \d+
+        julia_gc_alloc_total{type="poolalloc"} \d+
+        julia_gc_alloc_total{type="realloc"} \d+
         """,
         sprint(Prometheus.expose_metric, gc_alloc_total),
     )
