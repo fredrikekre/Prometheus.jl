@@ -129,10 +129,32 @@ function Counter(metric_name::String, help::String)
     return Counter(DEFAULT_REGISTRY, metric_name, help)
 end
 
+"""
+    Prometheus.Counter(; name, help, registry=DEFAULT_REGISTRY)
+
+Construct a Counter collector.
+
+**Required keyword arguments**
+ - `name :: String`: the name of the counter metric.
+ - `help :: String`: the documentation for the counter metric.
+
+**Optional keyword arguments**
+ - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
+   collector. If not specified the default registry is used. Pass `registry = nothing` to
+   skip registration.
+"""
+Counter
+
 function metric_names(counter::Counter)
     return (counter.metric_name, )
 end
 
+"""
+    Prometheus.inc(c::Counter, v = 1)
+
+Increment the value of the counter `c` with `v`.
+`v` must be non-negative, and defaults to `v = 1`.
+"""
 function inc(m::Counter, v = 1.0)
     if v < 0
         error("counting backwards")
@@ -187,10 +209,32 @@ function Gauge(metric_name::String, help::String)
     return Gauge(DEFAULT_REGISTRY, metric_name, help)
 end
 
+"""
+    Prometheus.Gauge(; name, help, registry=DEFAULT_REGISTRY)
+
+Construct a Gauge collector.
+
+**Required keyword arguments**
+ - `name :: String`: the name of the gauge metric.
+ - `help :: String`: the documentation for the gauge metric.
+
+**Optional keyword arguments**
+ - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
+   collector. If not specified the default registry is used. Pass `registry = nothing` to
+   skip registration.
+"""
+Gauge
+
 function metric_names(gauge::Gauge)
     return (gauge.metric_name, )
 end
 
+"""
+    Prometheus.inc(g::Gauge, v = 1)
+
+Increment the value of the gauge `g` with `v`.
+`v` defaults to `v = 1`.
+"""
 function inc(m::Gauge, v = 1.0)
     if v < 0
         error("incrementing with negative value, use dec(...)?")
@@ -199,6 +243,12 @@ function inc(m::Gauge, v = 1.0)
     return nothing
 end
 
+"""
+    Prometheus.dec(g::Gauge, v = 1)
+
+Decrement the value of the gauge `g` with `v`.
+`v` defaults to `v = 1`.
+"""
 function dec(m::Gauge, v = 1.0)
     if v < 0
         error("decrementing with negative value, use inc(...)?")
@@ -207,11 +257,21 @@ function dec(m::Gauge, v = 1.0)
     return nothing
 end
 
+"""
+    Prometheus.set(g::Gauge, v)
+
+Set the value of the gauge to `v`.
+"""
 function set(m::Gauge, v)
     @atomic m.value = v
     return nothing
 end
 
+"""
+    Prometheus.set_to_current_time(g::Gauge)
+
+Set the value of the gauge to the current unixtime in seconds.
+"""
 function set_to_current_time(m::Gauge)
     @atomic m.value = time()
     return nothing
@@ -263,10 +323,32 @@ function Summary(metric_name::String, help::String)
     return Summary(DEFAULT_REGISTRY, metric_name, help)
 end
 
+"""
+    Prometheus.Summary(; name, help, registry=DEFAULT_REGISTRY)
+
+Construct a Summary collector.
+
+**Required keyword arguments**
+ - `name :: String`: the name of the summary metric.
+ - `help :: String`: the documentation for the summary metric.
+
+**Optional keyword arguments**
+ - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
+   collector. If not specified the default registry is used. Pass `registry = nothing` to
+   skip registration.
+"""
+Summary
+
 function metric_names(summary::Summary)
     return (summary.metric_name * "_count", summary.metric_name * "_sum")
 end
 
+"""
+    Prometheus.observe(summary::Summary, v)
+
+Add the observed value `v` to the summary.
+This increases the sum and count of the summary with `v` and `1`, respectively.
+"""
 function observe(summary::Summary, v)
     @atomic summary._count += 1
     @atomic summary._sum += v
