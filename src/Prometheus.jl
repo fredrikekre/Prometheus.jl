@@ -113,8 +113,8 @@ mutable struct Counter <: Collector
     @atomic value::Float64
 
     function Counter(
-            registry::Union{CollectorRegistry, Nothing},
-            metric_name::String, help::String,
+            metric_name::String, help::String;
+            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         )
         initial_value = 0.0
         counter = new(metric_name, help, initial_value)
@@ -125,25 +125,21 @@ mutable struct Counter <: Collector
     end
 end
 
-function Counter(metric_name::String, help::String)
-    return Counter(DEFAULT_REGISTRY, metric_name, help)
-end
-
 """
-    Prometheus.Counter(; name, help, registry=DEFAULT_REGISTRY)
+    Prometheus.Counter(name, help; registry=DEFAULT_REGISTRY)
 
 Construct a Counter collector.
 
-**Required keyword arguments**
+**Arguments**
  - `name :: String`: the name of the counter metric.
  - `help :: String`: the documentation for the counter metric.
 
-**Optional keyword arguments**
+**Keyword arguments**
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
 """
-Counter
+Counter(::String, ::String; kwargs...)
 
 function metric_names(counter::Counter)
     return (counter.metric_name, )
@@ -193,8 +189,8 @@ mutable struct Gauge <: Collector
     @atomic value::Float64
 
     function Gauge(
-            registry::Union{CollectorRegistry, Nothing},
-            metric_name::String, help::String,
+            metric_name::String, help::String;
+            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         )
         initial_value = 0.0
         gauge = new(metric_name, help, initial_value)
@@ -205,25 +201,21 @@ mutable struct Gauge <: Collector
     end
 end
 
-function Gauge(metric_name::String, help::String)
-    return Gauge(DEFAULT_REGISTRY, metric_name, help)
-end
-
 """
-    Prometheus.Gauge(; name, help, registry=DEFAULT_REGISTRY)
+    Prometheus.Gauge(name, help; registry=DEFAULT_REGISTRY)
 
 Construct a Gauge collector.
 
-**Required keyword arguments**
+**Arguments**
  - `name :: String`: the name of the gauge metric.
  - `help :: String`: the documentation for the gauge metric.
 
-**Optional keyword arguments**
+**Keyword arguments**
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
 """
-Gauge
+Gauge(::String, ::String; kwargs...)
 
 function metric_names(gauge::Gauge)
     return (gauge.metric_name, )
@@ -300,8 +292,8 @@ mutable struct Summary <: Collector
     @atomic _sum::Float64
 
     function Summary(
-            registry::Union{CollectorRegistry, Nothing},
-            metric_name::String, help::String,
+            metric_name::String, help::String;
+            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         )
         initial_count = 0
         initial_sum = 0.0
@@ -313,25 +305,21 @@ mutable struct Summary <: Collector
     end
 end
 
-function Summary(metric_name::String, help::String)
-    return Summary(DEFAULT_REGISTRY, metric_name, help)
-end
-
 """
-    Prometheus.Summary(; name, help, registry=DEFAULT_REGISTRY)
+    Prometheus.Summary(name, help; registry=DEFAULT_REGISTRY)
 
 Construct a Summary collector.
 
-**Required keyword arguments**
+**Arguments**
  - `name :: String`: the name of the summary metric.
  - `help :: String`: the documentation for the summary metric.
 
-**Optional keyword arguments**
+**Keyword arguments**
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
 """
-Summary
+Summary(::String, ::String; kwargs...)
 
 function metric_names(summary::Summary)
     return (summary.metric_name * "_count", summary.metric_name * "_sum")
@@ -419,7 +407,7 @@ end
 
 function labels(family::Family{C}, labelvalues::LabelValues) where C
     collector = @lock family.lock get!(family.children, labelvalues) do
-        C(nothing, family.metric_name, family.help)
+        C(family.metric_name, family.help; registry=nothing)
     end
     return collector
 end

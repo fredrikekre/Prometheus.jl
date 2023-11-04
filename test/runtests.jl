@@ -14,11 +14,11 @@ using Test: @test, @test_logs, @test_throws, @testset
     @test c2 in Prometheus.DEFAULT_REGISTRY.collectors
     # Provided registry
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Counter(r, "metric_name_counter", "A counter.")
+    c = Prometheus.Counter("metric_name_counter", "A counter."; registry=r)
     @test c in r.collectors
     @test !(c in Prometheus.DEFAULT_REGISTRY.collectors)
     # No registry on construction, register after
-    c = Prometheus.Counter(nothing, "metric_name_counter", "A counter.")
+    c = Prometheus.Counter("metric_name_counter", "A counter."; registry=nothing)
     @test !(c in Prometheus.DEFAULT_REGISTRY.collectors)
     r = Prometheus.CollectorRegistry()
     Prometheus.register(r, c)
@@ -32,7 +32,7 @@ end
     c = Prometheus.Counter("metric_name_counter", "A counter.")
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Counter(r, "metric_name_counter", "A counter.")
+    c = Prometheus.Counter("metric_name_counter", "A counter."; registry=r)
     @test c in r.collectors
     @test c.value == 0
     # Prometheus.inc(...)
@@ -66,7 +66,7 @@ end
     c = Prometheus.Gauge("metric_name_gauge", "A gauge.")
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Gauge(r, "metric_name_gauge", "A gauge.")
+    c = Prometheus.Gauge("metric_name_gauge", "A gauge."; registry=r)
     @test c in r.collectors
     @test c.value == 0
     # Prometheus.inc(...)
@@ -113,7 +113,7 @@ end
     c = Prometheus.Summary("metric_name_summary", "A summary.")
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Summary(r, "metric_name_summary", "A summary.")
+    c = Prometheus.Summary("metric_name_summary", "A summary."; registry=r)
     @test c in r.collectors
     @test c._count == 0
     @test c._sum == 0
@@ -393,8 +393,8 @@ end
 @testset "Prometheus.expose(::Union{String, IO})" begin
     r = Prometheus.DEFAULT_REGISTRY
     empty!(r.collectors)
-    Prometheus.inc(Prometheus.Counter(r, "prom_counter", "Counting things"))
-    Prometheus.set(Prometheus.Gauge(r, "prom_gauge", "Gauging things"), 1.2)
+    Prometheus.inc(Prometheus.Counter("prom_counter", "Counting things"; registry=r))
+    Prometheus.set(Prometheus.Gauge("prom_gauge", "Gauging things"; registry=r), 1.2)
     mktempdir() do dir
         default = joinpath(dir, "default.prom")
         Prometheus.expose(default)
