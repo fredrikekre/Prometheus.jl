@@ -85,7 +85,7 @@ documentation](https://prometheus.io/docs/concepts/metric_types/#counter):
 #### Counter API reference
 
 ```@docs
-Prometheus.Counter
+Prometheus.Counter(::String, ::String; kwargs...)
 Prometheus.inc(::Prometheus.Counter, ::Any)
 ```
 
@@ -102,7 +102,7 @@ documentation](https://prometheus.io/docs/concepts/metric_types/#gauge):
 #### Gauge API reference
 
 ```@docs
-Prometheus.Gauge
+Prometheus.Gauge(::String, ::String; kwargs...)
 Prometheus.inc(::Prometheus.Gauge, ::Any)
 Prometheus.dec(::Prometheus.Gauge, ::Any)
 Prometheus.set(::Prometheus.Gauge, ::Any)
@@ -121,7 +121,7 @@ documentation](https://prometheus.io/docs/concepts/metric_types/#summary):
 #### Summary API reference
 
 ```@docs
-Prometheus.Summary
+Prometheus.Summary(::String, ::String; kwargs...)
 Prometheus.observe(::Prometheus.Summary, ::Any)
 ```
 
