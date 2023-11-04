@@ -236,9 +236,6 @@ Increment the value of the gauge `g` with `v`.
 `v` defaults to `v = 1`.
 """
 function inc(m::Gauge, v = 1.0)
-    if v < 0
-        error("incrementing with negative value, use dec(...)?")
-    end
     @atomic m.value += v
     return nothing
 end
@@ -250,9 +247,6 @@ Decrement the value of the gauge `g` with `v`.
 `v` defaults to `v = 1`.
 """
 function dec(m::Gauge, v = 1.0)
-    if v < 0
-        error("decrementing with negative value, use inc(...)?")
-    end
     @atomic m.value -= v
     return nothing
 end

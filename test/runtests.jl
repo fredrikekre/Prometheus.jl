@@ -76,13 +76,11 @@ end
     @test c.value == 1
     Prometheus.inc(c, 2)
     @test c.value == 3
-    @test_throws ErrorException Prometheus.inc(c, -1)
     # Prometheus.dec(...)
     Prometheus.dec(c)
     @test c.value == 2
     Prometheus.dec(c, 1)
     @test c.value == 1
-    @test_throws ErrorException Prometheus.dec(c, -1)
     # Prometheus.set_to_current_time(...)
     t0 = time()
     sleep(0.1)
