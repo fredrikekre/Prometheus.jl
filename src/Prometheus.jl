@@ -355,12 +355,12 @@ end
 # Family{<:Collector} <: Collector #
 ####################################
 
-struct LabelNames
-    labelnames::Vector{String}
+struct LabelNames{N}
+    labelnames::NTuple{N, String}
 end
 
-struct LabelValues
-    labelvalues::Vector{String}
+struct LabelValues{N}
+    labelvalues::NTuple{N, String}
 end
 function Base.hash(l::LabelValues, h::UInt)
     h = hash(0x94a2d04ee9e5a55b, h) # hash("Prometheus.LabelValues") on Julia 1.9.3
@@ -373,20 +373,20 @@ function Base.:(==)(l1::LabelValues, l2::LabelValues)
     return l1.labelvalues == l2.labelvalues
 end
 
-struct Family{C} <: Collector
+struct Family{C, N} <: Collector
     metric_name::String
     help::String
-    labelnames::LabelNames
-    children::Dict{LabelValues, C}
+    labelnames::LabelNames{N}
+    children::Dict{LabelValues{N}, C}
     lock::ReentrantLock
 
     function Family{C}(
-            metric_name::String, help::String, labelnames::Vector{String};
+            metric_name::String, help::String, labelnames::NTuple{N, String};
             registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
-        ) where C
-        children = Dict{LabelValues, C}()
+        ) where {C, N}
+        children = Dict{LabelValues{N}, C}()
         lock = ReentrantLock()
-        family = new(metric_name, help, LabelNames(labelnames), children, lock)
+        family = new{C, N}(metric_name, help, LabelNames(labelnames), children, lock)
         if registry !== nothing
             register(registry, family)
         end
@@ -403,7 +403,7 @@ label values encountered a new collector of type `C <: Collector` will be create
 **Arguments**
  - `name :: String`: the name of the family metric.
  - `help :: String`: the documentation for the family metric.
- - `labelnames :: Vector{String}`: the label names.
+ - `labelnames :: Tuple{String, ...}`: the label names.
 
 **Keyword arguments**
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
@@ -433,7 +433,7 @@ function metric_names(family::Family)
 end
 
 """
-    Prometheus.labels(family::Family{C}, labelvalues::Vector{String}) where C
+    Prometheus.labels(family::Family{C}, labelvalues::Tuple{String, ...}) where C
 
 Return the collector of type `C` from the family corresponding to the labels given by
 `labelvalues`.
@@ -444,7 +444,7 @@ Return the collector of type `C` from the family corresponding to the labels giv
     matter (below 100ns for some basic benchmarks) but it is safe to cache the returned
     collector if required.
 """
-function labels(family::Family{C}, labelvalues::Vector{String}) where C
+function labels(family::Family{C, N}, labelvalues::NTuple{N, String}) where {C, N}
     collector = @lock family.lock get!(family.children, LabelValues(labelvalues)) do
         C(family.metric_name, family.help; registry=nothing)
     end
@@ -452,7 +452,7 @@ function labels(family::Family{C}, labelvalues::Vector{String}) where C
 end
 
 """
-    Prometheus.remove(family::Family, labelvalues::Vector{String})
+    Prometheus.remove(family::Family, labelvalues::Tuple{String, ...})
 
 Remove the collector corresponding to `labelvalues`. Effectively this resets the collector
 since [`Prometheus.labels`](@ref) will recreate the collector when called with the same
@@ -461,7 +461,7 @@ label names.
 !!! note
     This method invalidates cached collectors for the label names.
 """
-function remove(family::Family, labelvalues::Vector{String})
+function remove(family::Family{<:Any, N}, labelvalues::NTuple{N, String}) where N
     @lock family.lock delete!(family.children, LabelValues(labelvalues))
     return
 end

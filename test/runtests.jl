@@ -151,9 +151,9 @@ end
 
 @testset "Prometheus.LabelNames and Prometheus.LabelValues" begin
     # Custom hashing
-    v1 = Prometheus.LabelValues(["foo", "bar"])
-    v2 = Prometheus.LabelValues(["foo", "bar"])
-    v3 = Prometheus.LabelValues(["foo", "baz"])
+    v1 = Prometheus.LabelValues(("foo", "bar"))
+    v2 = Prometheus.LabelValues(("foo", "bar"))
+    v3 = Prometheus.LabelValues(("foo", "baz"))
     @test hash(v1) == hash(v2)
     @test hash(v1) != hash(v3)
     @test v1 == v2
@@ -167,20 +167,20 @@ end
     empty!(Prometheus.DEFAULT_REGISTRY.collectors)
     c = Prometheus.Family{Collector}(
         "http_requests", "Number of HTTP requests.",
-        ["endpoint", "status_code"],
+        ("endpoint", "status_code"),
     )
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
     c = Prometheus.Family{Collector}(
         "http_requests", "Number of HTTP requests.",
-        ["endpoint", "status_code"];
+        ("endpoint", "status_code");
         registry = r,
     )
     @test c in r.collectors
     @test length(c.children) == 0
     # Prometheus.labels(...), Prometheus.remove(...), Prometheus.clear()
-    l1 = ["/foo/", "200"]
-    l2 = ["/bar/", "404"]
+    l1 = ("/foo/", "200")
+    l2 = ("/bar/", "404")
     @test Prometheus.labels(c, l1) === Prometheus.labels(c, l1)
     @test Prometheus.labels(c, l2) === Prometheus.labels(c, l2)
     @test length(c.children) == 2
@@ -207,8 +207,8 @@ end
     @test metric.help == c.help
     @test length(metric.samples) == 2
     s1, s2 = metric.samples[1], metric.samples[2]
-    @test s1.labels.labelvalues == ["/bar/", "404"]
-    @test s2.labels.labelvalues == ["/foo/", "200"]
+    @test s1.labels.labelvalues == ("/bar/", "404")
+    @test s2.labels.labelvalues == ("/foo/", "200")
     @test s1.value == 3
     @test s2.value == 3
     # Prometheus.expose_metric(...)
@@ -227,14 +227,14 @@ end
     r = Prometheus.CollectorRegistry()
     c = Prometheus.Family{Prometheus.Summary}(
         "http_request_time", "Time to process requests.",
-        ["endpoint", "status_code"];
+        ("endpoint", "status_code");
         registry = r,
     )
     @test c in r.collectors
     @test length(c.children) == 0
     # Prometheus.inc(...)
-    l1 = ["/foo/", "200"]
-    l2 = ["/bar/", "404"]
+    l1 = ("/foo/", "200")
+    l2 = ("/bar/", "404")
     @test Prometheus.labels(c, l1) === Prometheus.labels(c, l1)
     @test Prometheus.labels(c, l2) === Prometheus.labels(c, l2)
     @test length(c.children) == 2
@@ -262,8 +262,8 @@ end
     @test metric.help == c.help
     @test length(metric.samples) == 4
     s1, s2, s3, s4 = metric.samples
-    @test s1.labels.labelvalues == s2.labels.labelvalues == ["/bar/", "404"]
-    @test s3.labels.labelvalues == s4.labels.labelvalues == ["/foo/", "200"]
+    @test s1.labels.labelvalues == s2.labels.labelvalues == ("/bar/", "404")
+    @test s3.labels.labelvalues == s4.labels.labelvalues == ("/foo/", "200")
     @test s1.value == 2   # _count
     @test s2.value == 6.4 # _sum
     @test s3.value == 2   # _count
