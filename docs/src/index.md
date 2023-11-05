@@ -165,23 +165,12 @@ RandomCollector
 
 See <https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels> for details.
 
-All metrics can be labeled using the special `Prometheus.Family` collector. For example, a
-labeled Counter collector
-```julia
-labelnames = ["endpoint", "status_code"]
-counter_family = Prometheus.Family{Prometheus.Collector}(
-    "http_requests",
-    "Number of processed requests",
-    labelnames,
-)
+```@docs
+Prometheus.Family{C}(::String, ::String, ::Any; kwargs...) where C
+Prometheus.labels(::Prometheus.Family, ::Vector{String})
+Prometheus.remove(::Prometheus.Family, ::Vector{String})
+Prometheus.clear(::Prometheus.Family)
 ```
-
-Supported methods:
- - `Prometheus.labels(family, ["label 1", "label 2"])`: extract the child collector
-   corresponding to the labels `["label 1", "label 2"]`.
- - `Prometheus.remove(family, ["label 1", "label 2"])`: remove the child collector
-   corresponding to the labels `["label 1", "label 2"]`.
- - `Prometheus.clear(family)`: clear all child collectors.
 
 ## Registries
 

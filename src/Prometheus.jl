@@ -394,25 +394,87 @@ struct Family{C} <: Collector
     end
 end
 
+"""
+    Prometheus.Family{C}(name, help, labelnames; registry=DEFAULT_REGISTRY)
+
+Create a labeled collector family with labels given by `labelnames`. For every new set of
+label values encountered a new collector of type `C <: Collector` will be created.
+
+**Arguments**
+ - `name :: String`: the name of the family metric.
+ - `help :: String`: the documentation for the family metric.
+ - `labelnames :: Vector{String}`: the label names.
+
+**Keyword arguments**
+ - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
+   collector. If not specified the default registry is used. Pass `registry = nothing` to
+   skip registration.
+
+**Methods**
+ - [`Prometheus.labels`](@ref): return the collector for a specific set of labels.
+ - [`Prometheus.remove`](@ref): remove the collector for a specific set of labels.
+ - [`Prometheus.clear`](@ref): remove all collectors in the family.
+
+# Examples
+```julia
+# Construct a family of Counters
+counter_family = Prometheus.Family{Counter}(
+    "http_requests", "Number of HTTP requests", ["status_code", "endpoint"],
+)
+
+# Increment the counter for the labels status_code = "200" and endpoint = "/api"
+Prometheus.inc(Prometheus.labels(counter_family, ["200", "/api"]))
+```
+"""
+Family{C}(::String, ::String, ::Any; kwargs...) where C
 
 function metric_names(family::Family)
     return (family.metric_name, )
 end
 
-function labels(family::Family{C}, labelvalues::LabelValues) where C
-    collector = @lock family.lock get!(family.children, labelvalues) do
+"""
+    Prometheus.labels(family::Family{C}, labelvalues::Vector{String}) where C
+
+Return the collector of type `C` from the family corresponding to the labels given by
+`labelvalues`.
+
+!!! note
+    This method does an acquire/release of a lock, and a dictionary lookup, to find the
+    collector matching the label names. For typical applications this overhead does not
+    matter (below 100ns for some basic benchmarks) but it is safe to cache the returned
+    collector if required.
+"""
+function labels(family::Family{C}, labelvalues::Vector{String}) where C
+    collector = @lock family.lock get!(family.children, LabelValues(labelvalues)) do
         C(family.metric_name, family.help; registry=nothing)
     end
     return collector
 end
-labels(family::Family, labelvalues) = labels(family, LabelValues(labelvalues))
 
-function remove(family::Family, labelvalues::LabelValues)
-    @lock family.lock delete!(family.children, labelvalues)
+"""
+    Prometheus.remove(family::Family, labelvalues::Vector{String})
+
+Remove the collector corresponding to `labelvalues`. Effectively this resets the collector
+since [`Prometheus.labels`](@ref) will recreate the collector when called with the same
+label names.
+
+!!! note
+    This method invalidates cached collectors for the label names.
+"""
+function remove(family::Family, labelvalues::Vector{String})
+    @lock family.lock delete!(family.children, LabelValues(labelvalues))
     return
 end
-remove(family::Family, labelvalues) = remove(family, LabelValues(labelvalues))
 
+"""
+    Prometheus.clear(family::Family)
+
+Remove all collectors in the family. Effectively this resets the collectors since
+[`Prometheus.labels`](@ref) will recreate them when needed.
+
+!!! note
+    This method invalidates all cached collectors.
+"""
 function clear(family::Family)
     @lock family.lock empty!(family.children)
     return
