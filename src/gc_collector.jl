@@ -46,12 +46,12 @@ function collect!(metrics::Vector, ::GCCollector)
     push!(metrics,
         Metric(
             "counter", "julia_gc_alloc_total", "Total number of allocations (calls to malloc, realloc, etc)",
-            LabelNames(["type"]),
+            LabelNames(("type",)),
             [
-                Sample(nothing, LabelValues(["bigalloc"]), gc_num.bigalloc),
-                Sample(nothing, LabelValues(["malloc"]), gc_num.malloc),
-                Sample(nothing, LabelValues(["poolalloc"]), gc_num.poolalloc),
-                Sample(nothing, LabelValues(["realloc"]), gc_num.realloc),
+                Sample(nothing, LabelValues(("bigalloc",)), gc_num.bigalloc),
+                Sample(nothing, LabelValues(("malloc",)), gc_num.malloc),
+                Sample(nothing, LabelValues(("poolalloc",)), gc_num.poolalloc),
+                Sample(nothing, LabelValues(("realloc",)), gc_num.realloc),
             ],
         ),
         Metric(
@@ -72,10 +72,10 @@ function collect!(metrics::Vector, ::GCCollector)
         ),
         Metric(
             "counter", "julia_gc_collections_total", "Total number of calls to garbage collection",
-            LabelNames(["type"]),
+            LabelNames(("type",)),
             [
-                Sample(nothing, LabelValues(["full"]), gc_num.full_sweep),
-                Sample(nothing, LabelValues(["minor"]), gc_num.pause - gc_num.full_sweep),
+                Sample(nothing, LabelValues(("full",)), gc_num.full_sweep),
+                Sample(nothing, LabelValues(("minor",)), gc_num.pause - gc_num.full_sweep),
             ],
         ),
     )

@@ -167,8 +167,8 @@ See <https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels> fo
 
 ```@docs
 Prometheus.Family{C}(::String, ::String, ::Any; kwargs...) where C
-Prometheus.labels(::Prometheus.Family, ::Vector{String})
-Prometheus.remove(::Prometheus.Family, ::Vector{String})
+Prometheus.labels(::Prometheus.Family{C, N}, ::NTuple{N, String}) where {C, N}
+Prometheus.remove(::Prometheus.Family{C, N}, ::NTuple{N, String}) where {C, N}
 Prometheus.clear(::Prometheus.Family)
 ```
 

@@ -121,10 +121,10 @@ function collect!(metrics::Vector, procc::ProcessCollector)
             proc_cpu_seconds = Metric(
                 "counter", "process_cpu_seconds_total",
                 "Total CPU time (user and system mode) in seconds.",
-                LabelNames(["mode"]),
+                LabelNames(("mode",)),
                 [
-                    Sample(nothing, LabelValues(["system"]), stime),
-                    Sample(nothing, LabelValues(["user"]), utime),
+                    Sample(nothing, LabelValues(("system",)), stime),
+                    Sample(nothing, LabelValues(("user",)), utime),
                 ],
             )
             push!(metrics, proc_cpu_seconds)
