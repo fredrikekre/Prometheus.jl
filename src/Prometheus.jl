@@ -381,12 +381,12 @@ struct Family{C} <: Collector
     lock::ReentrantLock
 
     function Family{C}(
-            registry::Union{CollectorRegistry, Nothing},
-            metric_name::String, help::String, labelnames::LabelNames,
+            metric_name::String, help::String, labelnames::Vector{String};
+            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         ) where C
         children = Dict{LabelValues, C}()
         lock = ReentrantLock()
-        family = new(metric_name, help, labelnames, children, lock)
+        family = new(metric_name, help, LabelNames(labelnames), children, lock)
         if registry !== nothing
             register(registry, family)
         end
@@ -394,12 +394,6 @@ struct Family{C} <: Collector
     end
 end
 
-function Family{C}(metric_name::String, help::String, labelnames) where C
-    return Family{C}(DEFAULT_REGISTRY, metric_name, help, LabelNames(labelnames))
-end
-function Family{C}(registry::Union{CollectorRegistry, Nothing}, metric_name::String, help::String, labelnames) where C
-    return Family{C}(registry, metric_name, help, LabelNames(labelnames))
-end
 
 function metric_names(family::Family)
     return (family.metric_name, )
