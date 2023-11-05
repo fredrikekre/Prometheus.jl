@@ -3,7 +3,7 @@
 ############################
 
 mutable struct GCCollector <: Collector
-    function GCCollector(registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY)
+    function GCCollector(; registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY)
         gcc = new()
         if registry !== nothing
             register(registry, gcc)

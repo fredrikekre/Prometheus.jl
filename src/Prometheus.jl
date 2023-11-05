@@ -630,7 +630,7 @@ include("process_collector.jl")
 
 # Default registry and collectors
 const DEFAULT_REGISTRY = CollectorRegistry()
-const GC_COLLECTOR = GCCollector(DEFAULT_REGISTRY)
+const GC_COLLECTOR = GCCollector(; registry=DEFAULT_REGISTRY)
 const PROCESS_COLLECTOR = ProcessCollector(DEFAULT_REGISTRY)
 
 end # module Prometheus
