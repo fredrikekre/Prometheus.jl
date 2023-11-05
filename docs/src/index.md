@@ -11,7 +11,7 @@ Two of the basic concepts of a Prometheus client are [Registries](@ref) and
 [Collectors](@ref). Registries are collections of collectors, and the collectors are the
 units responsible to record and capture metrics. Client libraries implement a default
 registry which all collectors implicity register with, so for basic usage there is no need
-to interact with a registry (see [Default collector registry](@ref)).
+to interact with a registry (see [Default registry](@ref)).
 
 The third important concept is [Exposition](@ref) of the collected metrics. Typically
 metrics are exposed over a HTTP server, as in the [Quickstart](@ref)-example just below. See
@@ -138,6 +138,15 @@ metrics about I/O operations. Metrics from this collector have the `process_` pr
 their name. This collector is only available on Linux since it requires the `/proc` file
 system.
 
+A `ProcessCollector` for the current process is registered automatically with the
+default registry, see [Default registry](@ref) for more details.
+
+#### ProcessCollector API reference
+
+```@docs
+Prometheus.ProcessCollector(::Function; kwargs...)
+```
+
 ### Custom collectors
 
 RandomCollector
@@ -168,7 +177,7 @@ Supported methods:
 ## Registries
 
 
-### Default collector registry
+### Default registry
 
 
 ## Exposition
