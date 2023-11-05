@@ -318,7 +318,7 @@ end
 
 @testset "Prometheus.ProcessCollector" begin
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.ProcessCollector(r)
+    c = Prometheus.ProcessCollector(; registry=r)
     @test c in r.collectors
     metrics = Prometheus.collect(c)
     procfs_available = c.system_boot_time > 0
@@ -368,7 +368,7 @@ end
         @test isempty(metrics)
     end
     # Test that pid function works
-    procc = Prometheus.ProcessCollector(nothing, () -> getpid())
+    procc = Prometheus.ProcessCollector(() -> getpid(); registry=nothing)
     metrics = Prometheus.collect(procc)
     if procfs_available
         @test length(metrics) > 0

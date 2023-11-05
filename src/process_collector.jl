@@ -3,12 +3,13 @@
 #################################
 
 mutable struct ProcessCollector <: Collector
-    @const pid_f::Function
+    @const pid::Function
     @const system_boot_time::Int
     @const clock_ticks_per_second::Int
     @const pagesize::Int
     function ProcessCollector(
-            registry::Union{CollectorRegistry, Nothing}, pid_f::Function = () -> "self",
+            pid::Function = () -> "self";
+            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         )
         # Read boot time as a way to check if /proc is available and readable
         system_boot_time = 0
@@ -44,14 +45,13 @@ mutable struct ProcessCollector <: Collector
             end
         end
         # Create the collector
-        procc = new(pid_f, system_boot_time, clock_ticks_per_second, pagesize)
+        procc = new(pid, system_boot_time, clock_ticks_per_second, pagesize)
         if registry !== nothing
             register(registry, procc)
         end
         return procc
     end
 end
-ProcessCollector(pid_f::Function = () -> "self") = ProcessCollector(DEFAULT_REGISTRY, pid_f)
 
 function metric_names(::ProcessCollector)
     return (
@@ -68,7 +68,7 @@ function collect!(metrics::Vector, procc::ProcessCollector)
     procc.system_boot_time == 0 && return metrics
     # Fetch the pid
     pid = try
-        strip(string(procc.pid_f()))
+        String(strip(string(procc.pid()::Union{AbstractString,Integer})))::String
     catch e
         @error "ProcessCollector: could not look up the pid from the lambda" e
         return metrics
