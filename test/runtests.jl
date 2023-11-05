@@ -281,7 +281,7 @@ end
 
 @testset "Prometheus.GCCollector" begin
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.GCCollector(r)
+    c = Prometheus.GCCollector(; registry=r)
     @test c in r.collectors
     # Record before and after stats and test that the metrics are in between
     old_stats = Base.gc_num()
