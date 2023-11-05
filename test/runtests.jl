@@ -172,8 +172,9 @@ end
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
     c = Prometheus.Family{Collector}(
-        r, "http_requests", "Number of HTTP requests.",
-        ["endpoint", "status_code"],
+        "http_requests", "Number of HTTP requests.",
+        ["endpoint", "status_code"];
+        registry = r,
     )
     @test c in r.collectors
     @test length(c.children) == 0
@@ -225,8 +226,9 @@ end
 @testset "Prometheus.Family{Summary}" begin
     r = Prometheus.CollectorRegistry()
     c = Prometheus.Family{Prometheus.Summary}(
-        r, "http_request_time", "Time to process requests.",
-        ["endpoint", "status_code"],
+        "http_request_time", "Time to process requests.",
+        ["endpoint", "status_code"];
+        registry = r,
     )
     @test c in r.collectors
     @test length(c.children) == 0
