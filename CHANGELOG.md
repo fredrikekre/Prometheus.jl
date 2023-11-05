@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- ## [Unreleased] -->
 
-## [1.0.0] - 2023-11-03
+## [1.0.0] - 2023-11-05
 
 First stable release of Prometheus.jl:
 
