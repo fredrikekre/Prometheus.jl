@@ -612,8 +612,21 @@ struct Metric
     samples::Union{Sample, Vector{Sample}}
 end
 
+function print_escaped(io::IO, help::String, esc)
+    for c in help
+        if c in esc
+            c == '\n' ? print(io, "\\n") : print(io, '\\', c)
+        else
+            print(io, c)
+        end
+    end
+    return
+end
+
 function expose_metric(io::IO, metric::Metric)
-    println(io, "# HELP ", metric.metric_name, " ", metric.help)
+    print(io, "# HELP ", metric.metric_name, " ")
+    print_escaped(io, metric.help, ('\\', '\n'))
+    println(io)
     println(io, "# TYPE ", metric.metric_name, " ", metric.type)
     labelnames = metric.labelnames
     samples = metric.samples
@@ -641,7 +654,9 @@ function expose_metric(io::IO, metric::Metric)
                 print(io, "{")
                 for (name, value) in zip(labelnames.labelnames, labels.labelvalues)
                     first || print(io, ",")
-                    print(io, name, "=\"", value, "\"")
+                    print(io, name, "=\"")
+                    print_escaped(io, value, ('\\', '\"', '\n'))
+                    print(io, "\"")
                     first = false
                 end
                 print(io, "}")

@@ -422,6 +422,21 @@ end
     end
 end
 
+@testset "Character escaping in exposition" begin
+    counter = Prometheus.Family{Prometheus.Counter}(
+        "counter_name", "Help with slash \\ and newline \n", ("label_name", );
+        registry = nothing,
+    )
+    Prometheus.inc(Prometheus.labels(counter, ("backslash \\, quote \", newline \n", )))
+    metric = first(Prometheus.collect(counter))
+    @test sprint(Prometheus.expose_metric, metric) ==
+        """
+        # HELP counter_name Help with slash \\\\ and newline \\n
+        # TYPE counter_name counter
+        counter_name{label_name="backslash \\\\, quote \\", newline \\n"} 1
+        """
+end
+
 @testset "Prometheus.expose(::Union{String, IO})" begin
     r = Prometheus.DEFAULT_REGISTRY
     empty!(r.collectors)
