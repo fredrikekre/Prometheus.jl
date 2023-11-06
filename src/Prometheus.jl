@@ -405,13 +405,32 @@ end
 # Family{<:Collector} <: Collector #
 ####################################
 
+# https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+# - Labels may contain ASCII letters, numbers, as well as underscores.
+#   They must match the regex [a-zA-Z_][a-zA-Z0-9_]*.
+# - Label names beginning with __ (two "_") are reserved for internal use.
+function verify_label_name(label_name::String)
+    label_name_regex = r"^[a-zA-Z_][a-zA-Z0-9_]*$"
+    if !occursin(label_name_regex, label_name) || startswith(label_name, "__")
+        throw(ArgumentError("label name \"$(label_name)\" is invalid"))
+    end
+    return label_name
+end
+
 struct LabelNames{N}
     labelnames::NTuple{N, String}
+    function LabelNames(label_names::NTuple{N, String}) where N
+        for label_name in label_names
+            verify_label_name(label_name)
+        end
+        return new{N}(label_names)
+    end
 end
 
 struct LabelValues{N}
     labelvalues::NTuple{N, String}
 end
+
 function Base.hash(l::LabelValues, h::UInt)
     h = hash(0x94a2d04ee9e5a55b, h) # hash("Prometheus.LabelValues") on Julia 1.9.3
     for v in l.labelvalues
@@ -419,6 +438,7 @@ function Base.hash(l::LabelValues, h::UInt)
     end
     return h
 end
+
 function Base.:(==)(l1::LabelValues, l2::LabelValues)
     return l1.labelvalues == l2.labelvalues
 end

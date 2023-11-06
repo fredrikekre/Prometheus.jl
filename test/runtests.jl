@@ -168,7 +168,11 @@ end
 end
 
 @testset "Prometheus.LabelNames and Prometheus.LabelValues" begin
-    # Custom hashing
+    @test_throws(
+        Prometheus.ArgumentError("label name \"invalid-label\" is invalid"),
+        Prometheus.LabelNames(("invalid-label",)),
+    )
+    # Custom hashing of values
     v1 = Prometheus.LabelValues(("foo", "bar"))
     v2 = Prometheus.LabelValues(("foo", "bar"))
     v3 = Prometheus.LabelValues(("foo", "baz"))
@@ -199,6 +203,10 @@ end
     @test_throws(
         Prometheus.ArgumentError("metric name \"invalid-name\" is invalid"),
         Prometheus.Family{Collector}("invalid-name", "help", ("label",)),
+    )
+    @test_throws(
+        Prometheus.ArgumentError("label name \"invalid-label\" is invalid"),
+        Prometheus.Family{Collector}("valid_name", "help", ("invalid-label",)),
     )
     # Prometheus.labels(...), Prometheus.remove(...), Prometheus.clear()
     l1 = ("/foo/", "200")
