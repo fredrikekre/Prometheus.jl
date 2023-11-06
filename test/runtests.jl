@@ -7,7 +7,10 @@ using Test: @test, @test_logs, @test_throws, @testset
     # Default registry
     c = Prometheus.Counter("metric_name_counter", "A counter.")
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
-    @test_throws ErrorException Prometheus.Counter("metric_name_counter", "A counter.")
+    @test_throws(
+        Prometheus.ArgumentError("collector already contains a metric with the name \"metric_name_counter\""),
+        Prometheus.Counter("metric_name_counter", "A counter."),
+    )
     Prometheus.unregister(Prometheus.DEFAULT_REGISTRY, c)
     @test !(c in Prometheus.DEFAULT_REGISTRY.collectors)
     c2 = Prometheus.Counter("metric_name_counter", "A counter.")
@@ -23,7 +26,10 @@ using Test: @test, @test_logs, @test_throws, @testset
     r = Prometheus.CollectorRegistry()
     Prometheus.register(r, c)
     @test c in r.collectors
-    @test_throws ErrorException Prometheus.register(r, c)
+    @test_throws(
+        Prometheus.ArgumentError("collector already contains a metric with the name \"metric_name_counter\""),
+        Prometheus.register(r, c),
+    )
 end
 
 @testset "Prometheus.Counter" begin
@@ -42,7 +48,7 @@ end
     @test c.value == 1
     Prometheus.inc(c, 2)
     @test c.value == 3
-    @test_throws ErrorException Prometheus.inc(c, -1)
+    @test_throws Prometheus.ArgumentError Prometheus.inc(c, -1)
     # Prometheus.collect(...)
     metrics = Prometheus.collect(c)
     @test length(metrics) == 1
@@ -472,7 +478,13 @@ end
 end
 
 @testset "Utilities" begin
-    @test_throws Prometheus.PrometheusUnreachable Prometheus.unreachable()
-    @test_throws Prometheus.PrometheusAssert      Prometheus.@assert false
-    @test_throws Prometheus.PrometheusUnreachable Prometheus.prometheus_type(Int)
+    @test_throws Prometheus.UnreachableError Prometheus.unreachable()
+    @test_throws Prometheus.AssertionError   Prometheus.@assert false
+    @test occursin("unexpected", sprint(showerror, Prometheus.UnreachableError()))
+    @test occursin("unexpected", sprint(showerror, Prometheus.AssertionError()))
+    @test occursin(
+        "Prometheus.ArgumentError: err",
+        sprint(showerror, Prometheus.ArgumentError("err")),
+    )
+    @test_throws Prometheus.UnreachableError Prometheus.prometheus_type(Int)
 end

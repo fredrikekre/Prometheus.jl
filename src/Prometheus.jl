@@ -13,14 +13,30 @@ abstract type Collector end
 
 abstract type PrometheusException <: Exception end
 
-struct PrometheusUnreachable <: PrometheusException end
-unreachable() = throw(PrometheusUnreachable())
+struct ArgumentError <: PrometheusException
+    msg::String
+end
+function Base.showerror(io::IO, err::ArgumentError)
+    print(io, "Prometheus.", nameof(typeof(err)), ": ", err.msg)
+end
 
-struct PrometheusAssert <: PrometheusException end
+struct UnreachableError <: PrometheusException end
+unreachable() = throw(UnreachableError())
+
+struct AssertionError <: PrometheusException end
 macro assert(cond)
     return quote
-        $(esc(cond)) || throw(PrometheusAssert())
+        $(esc(cond)) || throw(AssertionError())
     end
+end
+
+function Base.showerror(io::IO, err::Union{AssertionError, UnreachableError})
+    print(
+        io,
+        "Prometheus.", nameof(typeof(err)),
+        ": this is unexpected. Please file an issue at " *
+        "https://github.com/fredrikekre/Prometheus.jl/issues/new",
+    )
 end
 
 ###########################################
@@ -75,8 +91,12 @@ function register(reg::CollectorRegistry, collector::Collector)
         for c in reg.collectors
             union!(existing_names, metric_names(c))
         end
-        if any(in(existing_names), metric_names(collector))
-            error("not allowed")
+        for metric_name in metric_names(collector)
+            if metric_name in existing_names
+                throw(ArgumentError(
+                    "collector already contains a metric with the name \"$(metric_name)\""
+                ))
+            end
         end
         push!(reg.collectors, collector)
     end
@@ -151,12 +171,15 @@ end
 """
     Prometheus.inc(counter::Counter, v = 1)
 
-Increment the value of the counter with `v`.
-`v` must be non-negative, and defaults to `v = 1`.
+Increment the value of the counter with `v`. The value defaults to `v = 1`.
+
+Throw a `Prometheus.ArgumentError` if `v < 0` (a counter must not decrease).
 """
 function inc(counter::Counter, v = 1.0)
     if v < 0
-        error("counting backwards")
+        throw(ArgumentError(
+            "invalid value $v: a counter must not decrease"
+        ))
     end
     @atomic counter.value += v
     return nothing
@@ -507,7 +530,7 @@ function collect!(metrics::Vector, family::Family{C}) where C
         for (labels, child) in family.children
             # collect!(...) the child, throw away the metric, but keep the samples
             child_metrics = collect!(resize!(buf, 0), child)
-            length(child_metrics) !=1 && error("multiple metrics not supported (yet?)")
+            length(child_metrics) != 1 && unreachable() # TODO: maybe this should be supported?
             child_metric = child_metrics[1]
             @assert(child_metric.type == type)
             # Unwrap and rewrap samples with the labels
