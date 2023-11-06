@@ -418,7 +418,7 @@ function verify_label_name(label_name::String)
 end
 
 struct LabelNames{N}
-    labelnames::NTuple{N, String}
+    label_names::NTuple{N, String}
     function LabelNames(label_names::NTuple{N, String}) where N
         for label_name in label_names
             verify_label_name(label_name)
@@ -428,36 +428,36 @@ struct LabelNames{N}
 end
 
 struct LabelValues{N}
-    labelvalues::NTuple{N, String}
+    label_values::NTuple{N, String}
 end
 
 function Base.hash(l::LabelValues, h::UInt)
     h = hash(0x94a2d04ee9e5a55b, h) # hash("Prometheus.LabelValues") on Julia 1.9.3
-    for v in l.labelvalues
+    for v in l.label_values
         h = hash(v, h)
     end
     return h
 end
 
 function Base.:(==)(l1::LabelValues, l2::LabelValues)
-    return l1.labelvalues == l2.labelvalues
+    return l1.label_values == l2.label_values
 end
 
 struct Family{C, N} <: Collector
     metric_name::String
     help::String
-    labelnames::LabelNames{N}
+    label_names::LabelNames{N}
     children::Dict{LabelValues{N}, C}
     lock::ReentrantLock
 
     function Family{C}(
-            metric_name::String, help::String, labelnames::NTuple{N, String};
+            metric_name::String, help::String, label_names::NTuple{N, String};
             registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         ) where {C, N}
         children = Dict{LabelValues{N}, C}()
         lock = ReentrantLock()
         family = new{C, N}(
-            verify_metric_name(metric_name), help, LabelNames(labelnames), children, lock,
+            verify_metric_name(metric_name), help, LabelNames(label_names), children, lock,
         )
         if registry !== nothing
             register(registry, family)
@@ -467,15 +467,15 @@ struct Family{C, N} <: Collector
 end
 
 """
-    Prometheus.Family{C}(name, help, labelnames; registry=DEFAULT_REGISTRY)
+    Prometheus.Family{C}(name, help, label_names; registry=DEFAULT_REGISTRY)
 
-Create a labeled collector family with labels given by `labelnames`. For every new set of
+Create a labeled collector family with labels given by `label_names`. For every new set of
 label values encountered a new collector of type `C <: Collector` will be created.
 
 **Arguments**
  - `name :: String`: the name of the family metric.
  - `help :: String`: the documentation for the family metric.
- - `labelnames :: Tuple{String, ...}`: the label names.
+ - `label_names :: Tuple{String, ...}`: the label names.
 
 **Keyword arguments**
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
@@ -505,10 +505,10 @@ function metric_names(family::Family)
 end
 
 """
-    Prometheus.labels(family::Family{C}, labelvalues::Tuple{String, ...}) where C
+    Prometheus.labels(family::Family{C}, label_values::Tuple{String, ...}) where C
 
 Return the collector of type `C` from the family corresponding to the labels given by
-`labelvalues`.
+`label_values`.
 
 !!! note
     This method does an acquire/release of a lock, and a dictionary lookup, to find the
@@ -516,8 +516,8 @@ Return the collector of type `C` from the family corresponding to the labels giv
     matter (below 100ns for some basic benchmarks) but it is safe to cache the returned
     collector if required.
 """
-function labels(family::Family{C, N}, labelvalues::NTuple{N, String}) where {C, N}
-    collector = @lock family.lock get!(family.children, LabelValues(labelvalues)) do
+function labels(family::Family{C, N}, label_values::NTuple{N, String}) where {C, N}
+    collector = @lock family.lock get!(family.children, LabelValues(label_values)) do
         # TODO: Avoid the re-verification of the metric name?
         C(family.metric_name, family.help; registry=nothing)
     end
@@ -525,17 +525,17 @@ function labels(family::Family{C, N}, labelvalues::NTuple{N, String}) where {C, 
 end
 
 """
-    Prometheus.remove(family::Family, labelvalues::Tuple{String, ...})
+    Prometheus.remove(family::Family, label_values::Tuple{String, ...})
 
-Remove the collector corresponding to `labelvalues`. Effectively this resets the collector
+Remove the collector corresponding to `label_values`. Effectively this resets the collector
 since [`Prometheus.labels`](@ref) will recreate the collector when called with the same
 label names.
 
 !!! note
     This method invalidates cached collectors for the label names.
 """
-function remove(family::Family{<:Any, N}, labelvalues::NTuple{N, String}) where N
-    @lock family.lock delete!(family.children, LabelValues(labelvalues))
+function remove(family::Family{<:Any, N}, label_values::NTuple{N, String}) where N
+    @lock family.lock delete!(family.children, LabelValues(label_values))
     return
 end
 
@@ -576,7 +576,7 @@ function collect!(metrics::Vector, family::Family{C}) where C
             else
                 @assert(child_samples isa Vector{Sample})
                 for child_sample in child_samples
-                    @assert(child_sample.labels === nothing)
+                    @assert(child_sample.label_values === nothing)
                     push!(samples, Sample(child_sample.suffix, labels, child_sample.value))
                 end
             end
@@ -584,11 +584,14 @@ function collect!(metrics::Vector, family::Family{C}) where C
     end
     # Sort samples lexicographically by the labels
     sort!(samples; by = function(x)
-        labels = x.labels
+        labels = x.label_values
         @assert(labels !== nothing)
-        return labels.labelvalues
+        return labels.label_values
     end)
-    push!(metrics, Metric(type, family.metric_name, family.help, family.labelnames, samples))
+    push!(
+        metrics,
+        Metric(type, family.metric_name, family.help, family.label_names, samples),
+    )
     return metrics
 end
 
@@ -599,7 +602,7 @@ end
 
 struct Sample
     suffix::Union{String, Nothing} # e.g. _count or _sum
-    labels::Union{LabelValues, Nothing}
+    label_values::Union{LabelValues, Nothing}
     value::Float64
 end
 
@@ -607,7 +610,7 @@ struct Metric
     type::String
     metric_name::String
     help::String
-    labelnames::Union{LabelNames, Nothing}
+    label_names::Union{LabelNames, Nothing}
     # TODO: Union{Tuple{Sample}, Vector{Sample}} would always make this iterable.
     samples::Union{Sample, Vector{Sample}}
 end
@@ -628,12 +631,12 @@ function expose_metric(io::IO, metric::Metric)
     print_escaped(io, metric.help, ('\\', '\n'))
     println(io)
     println(io, "# TYPE ", metric.metric_name, " ", metric.type)
-    labelnames = metric.labelnames
+    label_names = metric.label_names
     samples = metric.samples
     if samples isa Sample
         # Single sample, no labels
-        @assert(labelnames === nothing)
-        @assert(samples.labels === nothing)
+        @assert(label_names === nothing)
+        @assert(samples.label_values === nothing)
         @assert(samples.suffix === nothing)
         val = samples.value
         println(io, metric.metric_name, " ", isinteger(val) ? Int(val) : val)
@@ -648,11 +651,11 @@ function expose_metric(io::IO, metric::Metric)
                 print(io, sample.suffix)
             end
             # Print potential labels
-            labels = sample.labels
-            if labelnames !== nothing && labels !== nothing
+            labels = sample.label_values
+            if label_names !== nothing && labels !== nothing
                 first = true
                 print(io, "{")
-                for (name, value) in zip(labelnames.labelnames, labels.labelvalues)
+                for (name, value) in zip(label_names.label_names, labels.label_values)
                     first || print(io, ",")
                     print(io, name, "=\"")
                     print_escaped(io, value, ('\\', '\"', '\n'))

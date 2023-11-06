@@ -152,8 +152,8 @@ end
     s1, s2 = metric.samples[1], metric.samples[2]
     @test s1.suffix == "_count"
     @test s2.suffix == "_sum"
-    @test s1.labels === nothing
-    @test s2.labels === nothing
+    @test s1.label_values === nothing
+    @test s2.label_values === nothing
     @test s1.value == 2
     @test s2.value == 11
     # Prometheus.expose_metric(...)
@@ -237,8 +237,8 @@ end
     @test metric.help == c.help
     @test length(metric.samples) == 2
     s1, s2 = metric.samples[1], metric.samples[2]
-    @test s1.labels.labelvalues == ("/bar/", "404")
-    @test s2.labels.labelvalues == ("/foo/", "200")
+    @test s1.label_values.label_values == ("/bar/", "404")
+    @test s2.label_values.label_values == ("/foo/", "200")
     @test s1.value == 3
     @test s2.value == 3
     # Prometheus.expose_metric(...)
@@ -292,8 +292,8 @@ end
     @test metric.help == c.help
     @test length(metric.samples) == 4
     s1, s2, s3, s4 = metric.samples
-    @test s1.labels.labelvalues == s2.labels.labelvalues == ("/bar/", "404")
-    @test s3.labels.labelvalues == s4.labels.labelvalues == ("/foo/", "200")
+    @test s1.label_values.label_values == s2.label_values.label_values == ("/bar/", "404")
+    @test s3.label_values.label_values == s4.label_values.label_values == ("/foo/", "200")
     @test s1.value == 2   # _count
     @test s2.value == 6.4 # _sum
     @test s3.value == 2   # _count
