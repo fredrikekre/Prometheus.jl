@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- ## [Unreleased] -->
 
+## [1.0.1] - 2023-11-06
+### Fixed
+ - Fixed verification of metric names and label names.
+ - Correctly escape special characters in exposition (specifically help and label values).
+
 ## [1.0.0] - 2023-11-05
 
 First stable release of Prometheus.jl:
@@ -23,5 +28,6 @@ First stable release of Prometheus.jl:
 See [README.md](README.md) for details and documentation.
 
 
-[Unreleased]: https://github.com/fredrikekre/Literate.jl/compare/v2.15.0...HEAD
-[1.0.0]: https://github.com/fredrikekre/Literate.jl/compare/v2.8.1...v2.9.0
+[Unreleased]: https://github.com/fredrikekre/Prometheus.jl/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/fredrikekre/Prometheus.jl/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/fredrikekre/Prometheus.jl/tree/v1.0.0

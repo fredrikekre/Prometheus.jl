@@ -210,7 +210,7 @@ uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 deps = ["CodecZlib", "HTTP", "SimpleBufferStream", "Sockets"]
 path = ".."
 uuid = "f25c1797-fe98-4e0c-b252-1b4fe3b6bde6"
-version = "1.0.0"
+version = "1.0.1"
 
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "Unicode"]
@@ -256,9 +256,9 @@ deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
 uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [[deps.TranscodingStreams]]
-git-tree-sha1 = "49cbf7c74fafaed4c529d47d48c8f7da6a19eb75"
+git-tree-sha1 = "1fbeaaca45801b4ba17c251dd8603ef24801dd84"
 uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
-version = "0.10.1"
+version = "0.10.2"
 weakdeps = ["Random", "Test"]
 
     [deps.TranscodingStreams.extensions]
