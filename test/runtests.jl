@@ -41,6 +41,10 @@ end
     c = Prometheus.Counter("metric_name_counter", "A counter."; registry=r)
     @test c in r.collectors
     @test c.value == 0
+    @test_throws(
+        Prometheus.ArgumentError("metric name \"invalid-name\" is invalid"),
+        Prometheus.Counter("invalid-name", "help"),
+    )
     # Prometheus.inc(...)
     Prometheus.inc(c)
     @test c.value == 1
@@ -75,6 +79,10 @@ end
     c = Prometheus.Gauge("metric_name_gauge", "A gauge."; registry=r)
     @test c in r.collectors
     @test c.value == 0
+    @test_throws(
+        Prometheus.ArgumentError("metric name \"invalid-name\" is invalid"),
+        Prometheus.Gauge("invalid-name", "help"),
+    )
     # Prometheus.inc(...)
     Prometheus.inc(c)
     @test c.value == 1
@@ -123,6 +131,10 @@ end
     @test c in r.collectors
     @test c._count == 0
     @test c._sum == 0
+    @test_throws(
+        Prometheus.ArgumentError("metric name \"invalid-name\" is invalid"),
+        Prometheus.Summary("invalid-name", "help"),
+    )
     # Prometheus.observe(...)
     Prometheus.observe(c, 1)
     @test c._count == 1
@@ -184,6 +196,10 @@ end
     )
     @test c in r.collectors
     @test length(c.children) == 0
+    @test_throws(
+        Prometheus.ArgumentError("metric name \"invalid-name\" is invalid"),
+        Prometheus.Family{Collector}("invalid-name", "help", ("label",)),
+    )
     # Prometheus.labels(...), Prometheus.remove(...), Prometheus.clear()
     l1 = ("/foo/", "200")
     l2 = ("/bar/", "404")

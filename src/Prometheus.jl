@@ -39,6 +39,19 @@ function Base.showerror(io::IO, err::Union{AssertionError, UnreachableError})
     )
 end
 
+# https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
+# Metric names may contain ASCII letters, digits, underscores, and colons.
+# It must match the regex [a-zA-Z_:][a-zA-Z0-9_:]*.
+# Note: The colons are reserved for user defined recording rules. They should
+# not be used by exporters or direct instrumentation.
+function verify_metric_name(metric_name::String)
+    metric_name_regex = r"^[a-zA-Z_:][a-zA-Z0-9_:]*$"
+    if !occursin(metric_name_regex, metric_name)
+        throw(ArgumentError("metric name \"$(metric_name)\" is invalid"))
+    end
+    return metric_name
+end
+
 ###########################################
 # Compat for const fields, @lock, @atomic #
 ###########################################
@@ -137,7 +150,7 @@ mutable struct Counter <: Collector
             registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         )
         initial_value = 0.0
-        counter = new(metric_name, help, initial_value)
+        counter = new(verify_metric_name(metric_name), help, initial_value)
         if registry !== nothing
             register(registry, counter)
         end
@@ -219,7 +232,7 @@ mutable struct Gauge <: Collector
             registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         )
         initial_value = 0.0
-        gauge = new(metric_name, help, initial_value)
+        gauge = new(verify_metric_name(metric_name), help, initial_value)
         if registry !== nothing
             register(registry, gauge)
         end
@@ -331,7 +344,7 @@ mutable struct Summary <: Collector
         )
         initial_count = 0
         initial_sum = 0.0
-        summary = new(metric_name, help, initial_count, initial_sum)
+        summary = new(verify_metric_name(metric_name), help, initial_count, initial_sum)
         if registry !== nothing
             register(registry, summary)
         end
@@ -423,7 +436,9 @@ struct Family{C, N} <: Collector
         ) where {C, N}
         children = Dict{LabelValues{N}, C}()
         lock = ReentrantLock()
-        family = new{C, N}(metric_name, help, LabelNames(labelnames), children, lock)
+        family = new{C, N}(
+            verify_metric_name(metric_name), help, LabelNames(labelnames), children, lock,
+        )
         if registry !== nothing
             register(registry, family)
         end
@@ -483,6 +498,7 @@ Return the collector of type `C` from the family corresponding to the labels giv
 """
 function labels(family::Family{C, N}, labelvalues::NTuple{N, String}) where {C, N}
     collector = @lock family.lock get!(family.children, LabelValues(labelvalues)) do
+        # TODO: Avoid the re-verification of the metric name?
         C(family.metric_name, family.help; registry=nothing)
     end
     return collector
