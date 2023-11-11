@@ -5,7 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-<!-- ## [Unreleased] -->
+## [Unreleased]
+### Added
+ - New macro `Prometheus.@time collector <expr>` for timing `<expr>` and pass the elapsed
+   time to the collector. `<expr>` can be a single expression, a block, or a function
+   *definition*. In the latter case, all calls to the function will be instrumented (no
+   matter the call site). See documentation for more details. ([#6][github-6])
+ - New macro `Prometheus.@inprogress collector <expr>` to track number of in-progress
+   concurrent evalutations of `<expr>`. Just like `Prometheus.@time`, valid `<expr>`s are
+   single expressions, blocks, and function definitions. See documentation for more details.
+   ([#6][github-6])
 
 ## [1.0.1] - 2023-11-06
 ### Fixed
@@ -27,6 +36,8 @@ First stable release of Prometheus.jl:
 
 See [README.md](README.md) for details and documentation.
 
+
+[github-6]: https://github.com/fredrikekre/Prometheus.jl/pull/6
 
 [Unreleased]: https://github.com/fredrikekre/Prometheus.jl/compare/v1.0.1...HEAD
 [1.0.1]: https://github.com/fredrikekre/Prometheus.jl/compare/v1.0.0...v1.0.1

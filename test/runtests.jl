@@ -253,6 +253,106 @@ end
           """
 end
 
+@testset "Prometheus.@time gauge::Gauge" begin
+    gauge = Prometheus.Gauge("call_time_last", "Time of last call"; registry=nothing)
+    Prometheus.@time gauge sleep(0.1)
+    @test 0.3 > gauge.value > 0.1
+    Prometheus.@time gauge let
+        sleep(0.1)
+    end
+    @test 0.3 > gauge.value > 0.1
+    Prometheus.@time gauge f() = sleep(0.1)
+    @sync begin
+        @async f()
+        @async f()
+    end
+    @test 0.3 > gauge.value > 0.1
+    Prometheus.@time gauge function g()
+        sleep(0.1)
+    end
+    @sync begin
+        @async g()
+        @async g()
+    end
+    @test 0.3 > gauge.value > 0.1
+end
+
+@testset "Prometheus.@time summary::Summary" begin
+    summary = Prometheus.Summary("call_time", "Time of calls"; registry=nothing)
+    Prometheus.@time summary sleep(0.1)
+    @test 0.3 > summary._sum > 0.1
+    @test summary._count == 1
+    Prometheus.@time summary let
+        sleep(0.1)
+    end
+    @test 0.4 > summary._sum > 0.2
+    @test summary._count == 2
+    Prometheus.@time summary f() = sleep(0.1)
+    @sync begin
+        @async f()
+        @async f()
+    end
+    @test 0.7 > summary._sum > 0.4
+    @test summary._count == 4
+    Prometheus.@time summary function g()
+        sleep(0.1)
+    end
+    @sync begin
+        @async g()
+        @async g()
+    end
+    @test 0.9 > summary._sum > 0.6
+    @test summary._count == 6
+end
+
+@testset "Prometheus.@inprogress gauge::Gauge" begin
+    gauge = Prometheus.Gauge("calls_inprogres", "Number of calls in progress"; registry=nothing)
+    Prometheus.@inprogress gauge sleep(0.01)
+    @test gauge.value == 0.0
+    Prometheus.@inprogress gauge let
+        sleep(0.01)
+    end
+    @test gauge.value == 0.0
+    Prometheus.@inprogress gauge f() = sleep(0.01)
+    @sync begin
+        @async f()
+        @async f()
+    end
+    @test gauge.value == 0.0
+    Prometheus.@inprogress gauge function g()
+        sleep(0.01)
+    end
+    @sync begin
+        @async g()
+        @async g()
+    end
+    @test gauge.value == 0.0
+    # Concurrency tests
+    @sync begin
+        tsks = Vector{Task}(undef, 100)
+        for i in 1:100
+            tsk = @async begin
+                0 <= gauge.value <= 100 || error()
+                Prometheus.@inprogress gauge sleep(1 + rand())
+            end
+            tsks[i] = tsk
+        end
+        # Make sure all tasks have started before testing the value
+        while any(!istaskstarted, tsks)
+            sleep(0.1)
+        end
+        @test gauge.value == 100
+    end
+    @test gauge.value == 0
+end
+
+@testset "Custom collector with @time/@inprogress" begin
+    struct Coll <: Prometheus.Collector end
+    @test_throws Prometheus.UnreachableError Prometheus.at_time(Coll(), 1.0)
+    @test_throws Prometheus.UnreachableError Prometheus.at_inprogress_enter(Coll())
+    @test_throws Prometheus.UnreachableError Prometheus.at_inprogress_exit(Coll())
+end
+
 @testset "Prometheus.Family{Summary}" begin
     r = Prometheus.CollectorRegistry()
     c = Prometheus.Family{Prometheus.Summary}(

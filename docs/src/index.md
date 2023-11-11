@@ -107,6 +107,8 @@ Prometheus.inc(::Prometheus.Gauge, ::Any)
 Prometheus.dec(::Prometheus.Gauge, ::Any)
 Prometheus.set(::Prometheus.Gauge, ::Any)
 Prometheus.set_to_current_time(::Prometheus.Gauge)
+Prometheus.@time
+Prometheus.@inprogress
 ```
 
 ### Summary
@@ -123,6 +125,9 @@ documentation](https://prometheus.io/docs/concepts/metric_types/#summary):
 ```@docs
 Prometheus.Summary(::String, ::String; kwargs...)
 Prometheus.observe(::Prometheus.Summary, ::Any)
+```
+```@docs; canonical=false
+Prometheus.@time
 ```
 
 ### GCCollector
