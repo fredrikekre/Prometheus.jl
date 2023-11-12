@@ -168,12 +168,46 @@ RandomCollector
 
 ## Labels
 
-See <https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels> for details.
+Prometheus allows attaching labels to metrics, see the upstream documentation:
+ - <https://prometheus.io/docs/practices/naming/#labels>
+ - <https://prometheus.io/docs/practices/instrumentation/#use-labels>
+ - <https://prometheus.io/docs/practices/instrumentation/#do-not-overuse-labels>
+
+In this package labeling of collectors is done with [`Prometheus.Family`](@ref). A collector
+family consist of a number of regular collectors, the children, with unique labels.
+
+A concrete example is a HTTP request `Counter`, where we might also want to keep track of
+the target resource and the status code of the request. Such instrumentation can be
+implemented as follows
+
+```julia
+# Custom label struct
+struct RequestLabels
+    target::String
+    status_code::Int
+end
+
+# Create the counter family
+request_counter = Prometheus.Family{Prometheus.Counter}(
+    "http_requests", "Total number of HTTP requests", RequestLabels
+)
+
+# Extract a Counter for a specific set of labels
+counter = Prometheus.labels(request_counter, RequestLabels("/api", 200))
+
+# Increment the counter
+Prometheus.inc(counter)
+```
+
+Note that using a custom label struct is optional, refer to the constructor
+[`Prometheus.Family`](@ref) and [`Prometheus.labels`](@ref) for alternative methods.
+
+### Family API reference
 
 ```@docs
 Prometheus.Family{C}(::String, ::String, ::Any; kwargs...) where C
-Prometheus.labels(::Prometheus.Family{C, N}, ::NTuple{N, String}) where {C, N}
-Prometheus.remove(::Prometheus.Family{C, N}, ::NTuple{N, String}) where {C, N}
+Prometheus.labels(::Prometheus.Family{C, N}, ::Any) where {C, N}
+Prometheus.remove(::Prometheus.Family{<:Any, N}, ::Any) where {N}
 Prometheus.clear(::Prometheus.Family)
 ```
 

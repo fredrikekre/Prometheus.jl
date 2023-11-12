@@ -545,17 +545,47 @@ function verify_label_name(label_name::String)
 end
 
 struct LabelNames{N}
-    label_names::NTuple{N, String}
-    function LabelNames(label_names::NTuple{N, String}) where N
+    label_names::NTuple{N, Symbol}
+    function LabelNames(label_names::NTuple{N, Symbol}) where N
         for label_name in label_names
-            verify_label_name(label_name)
+            verify_label_name(String(label_name))
         end
         return new{N}(label_names)
     end
 end
 
+# Tuple of strings
+function LabelNames(label_names::NTuple{N, String}) where N
+    return LabelNames(map(Symbol, label_names))
+end
+
+# NamedTuple-type or a (user defined) struct
+function LabelNames(::Type{T}) where T
+    return LabelNames(fieldnames(T))
+end
+
 struct LabelValues{N}
     label_values::NTuple{N, String}
+end
+
+function make_label_values(::LabelNames{N}, label_values::NTuple{N, String}) where N
+    return LabelValues(label_values)
+end
+
+stringify(str::String) = str
+stringify(str) = String(string(str))::String
+
+# Heterogeneous tuple
+function make_label_values(::LabelNames{N}, label_values::Tuple{Vararg{<:Any, N}}) where N
+    return LabelValues(map(stringify, label_values)::NTuple{N, String})
+end
+
+# NamedTuple or a (user defined) struct
+function make_label_values(label_names::LabelNames{N}, label_values) where N
+    t::NTuple{N, String} = ntuple(N) do i
+        stringify(getfield(label_values, label_names.label_names[i]))::String
+    end
+    return LabelValues{N}(t)
 end
 
 function Base.hash(l::LabelValues, h::UInt)
@@ -578,13 +608,15 @@ struct Family{C, N} <: Collector
     lock::ReentrantLock
 
     function Family{C}(
-            metric_name::String, help::String, label_names::NTuple{N, String};
+            metric_name::String, help::String, label_names;
             registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
-        ) where {C, N}
+        ) where {C}
+        labels = LabelNames(label_names)
+        N = length(labels.label_names)
         children = Dict{LabelValues{N}, C}()
         lock = ReentrantLock()
         family = new{C, N}(
-            verify_metric_name(metric_name), help, LabelNames(label_names), children, lock,
+            verify_metric_name(metric_name), help, labels, children, lock,
         )
         if registry !== nothing
             register(registry, family)
@@ -602,7 +634,21 @@ label values encountered a new collector of type `C <: Collector` will be create
 **Arguments**
  - `name :: String`: the name of the family metric.
  - `help :: String`: the documentation for the family metric.
- - `label_names :: Tuple{String, ...}`: the label names.
+ - `label_names`: the label names for the family. Label names can be given as either of the
+   following (typically matching the methods label values will be given later, see
+   [`Prometheus.labels`](@ref)):
+    - a tuple of symbols or strings, e.g. `(:target, :status_code)` or
+      `("target", "status_code")`
+    - a named tuple type, e.g. `@NamedTuple{target::String, status_code::Int}` where the
+      names are used as the label names
+    - a custom struct type, e.g. `RequestLabels` defined as
+      ```julia
+      struct RequestLabels
+          target::String
+          status_code::Int
+      end
+      ```
+      where the field names are used for the label names.
 
 **Keyword arguments**
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
@@ -618,11 +664,11 @@ label values encountered a new collector of type `C <: Collector` will be create
 ```julia
 # Construct a family of Counters
 counter_family = Prometheus.Family{Counter}(
-    "http_requests", "Number of HTTP requests", ["status_code", "endpoint"],
+    "http_requests", "Number of HTTP requests", (:target, :status_code),
 )
 
-# Increment the counter for the labels status_code = "200" and endpoint = "/api"
-Prometheus.inc(Prometheus.labels(counter_family, ["200", "/api"]))
+# Increment the counter for the labels `target="/api"` and `status_code=200`
+Prometheus.inc(Prometheus.labels(counter_family, (target="/api", status_code=200)))
 ```
 """
 Family{C}(::String, ::String, ::Any; kwargs...) where C
@@ -632,10 +678,19 @@ function metric_names(family::Family)
 end
 
 """
-    Prometheus.labels(family::Family{C}, label_values::Tuple{String, ...}) where C
+    Prometheus.labels(family::Family{C}, label_values) where C
 
 Return the collector of type `C` from the family corresponding to the labels given by
 `label_values`.
+
+Similarly to when creating the [`Family`](@ref), `label_values` can be given as either of
+the following:
+ - a tuple, e.g. `("/api", 200)`
+ - a named tuple with names matching the label names, e.g.`(target="/api", status_code=200)`
+ - a struct instance with field names matching the label names , e.g.
+   `RequestLabels("/api", 200)`
+
+All non-string values (e.g. `200` in the examples above) are stringified using `string`.
 
 !!! note
     This method does an acquire/release of a lock, and a dictionary lookup, to find the
@@ -643,8 +698,9 @@ Return the collector of type `C` from the family corresponding to the labels giv
     matter (below 100ns for some basic benchmarks) but it is safe to cache the returned
     collector if required.
 """
-function labels(family::Family{C, N}, label_values::NTuple{N, String}) where {C, N}
-    collector = @lock family.lock get!(family.children, LabelValues(label_values)) do
+function labels(family::Family{C, N}, label_values) where {C, N}
+    labels = make_label_values(family.label_names, label_values)::LabelValues{N}
+    collector = @lock family.lock get!(family.children, labels) do
         # TODO: Avoid the re-verification of the metric name?
         C(family.metric_name, family.help; registry=nothing)
     end
@@ -652,17 +708,20 @@ function labels(family::Family{C, N}, label_values::NTuple{N, String}) where {C,
 end
 
 """
-    Prometheus.remove(family::Family, label_values::Tuple{String, ...})
+    Prometheus.remove(family::Family, label_values)
 
 Remove the collector corresponding to `label_values`. Effectively this resets the collector
 since [`Prometheus.labels`](@ref) will recreate the collector when called with the same
 label names.
 
+Refer to [`Prometheus.labels`](@ref) for how to specify `label_values`.
+
 !!! note
     This method invalidates cached collectors for the label names.
 """
-function remove(family::Family{<:Any, N}, label_values::NTuple{N, String}) where N
-    @lock family.lock delete!(family.children, LabelValues(label_values))
+function remove(family::Family{<:Any, N}, label_values) where N
+    labels = make_label_values(family.label_names, label_values)::LabelValues{N}
+    @lock family.lock delete!(family.children, labels)
     return
 end
 

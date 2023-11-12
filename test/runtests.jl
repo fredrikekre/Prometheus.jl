@@ -411,6 +411,44 @@ end
           """
 end
 
+@testset "Label types for Prometheus.Family{C}" begin
+    struct RequestLabels
+        target::String
+        status_code::Int
+    end
+    for fam in (
+            # Constructor with NTuple{N, String} names
+            Prometheus.Family{Prometheus.Counter}(
+                "http_requests", "Total number of HTTP requests", ("target", "status_code");
+                registry=nothing,
+            ),
+            # Constructor with NTuple{N, Symbol} names
+            Prometheus.Family{Prometheus.Counter}(
+                "http_requests", "Total number of HTTP requests", (:target, :status_code);
+                registry=nothing,
+            ),
+            # Constructor with NamedTuple type
+            Prometheus.Family{Prometheus.Counter}(
+                "http_requests", "Total number of HTTP requests",
+                @NamedTuple{target::String, status_code::Int};
+                registry=nothing,
+            ),
+            # Constructor with custom struct
+            Prometheus.Family{Prometheus.Counter}(
+                "http_requests", "Total number of HTTP requests", RequestLabels;
+                registry=nothing,
+            ),
+        )
+        @test Prometheus.labels(fam, ("/api", "200")) ===
+              Prometheus.labels(fam, ("/api", 200)) ===
+              Prometheus.labels(fam, (target="/api", status_code="200")) ===
+              Prometheus.labels(fam, (target="/api", status_code=200)) ===
+              Prometheus.labels(fam, (status_code="200", target="/api")) ===
+              Prometheus.labels(fam, (status_code=200, target="/api")) ===
+              Prometheus.labels(fam, RequestLabels("/api", 200))
+    end
+end
+
 @testset "Prometheus.GCCollector" begin
     r = Prometheus.CollectorRegistry()
     c = Prometheus.GCCollector(; registry=r)
