@@ -214,14 +214,6 @@ end
 ######################
 # https://prometheus.io/docs/instrumenting/writing_clientlibs/#gauge
 
-# TODO: A gauge is ENCOURAGED to have:
-#  - A way to track in-progress requests in some piece of code/function. This is
-#    track_inprogress in Python.
-#  - A way to time a piece of code and set the gauge to its duration in seconds. This is
-#    useful for batch jobs. This is startTimer/setDuration in Java and the time()
-#    decorator/context manager in Python. This SHOULD match the pattern in Summary/Histogram
-#    (though set() rather than observe()).
-
 mutable struct Gauge <: Collector
     @const metric_name::String
     @const help::String
@@ -261,6 +253,10 @@ Construct a Gauge collector.
  - [`Prometheus.set`](@ref): set the value of the gauge.
  - [`Prometheus.set_to_current_time`](@ref): set the value of the gauge to the
    current unixtime.
+ - [`Prometheus.@time`](@ref): time a section and set the value of the the gauge to the
+   elapsed time.
+ - [`Prometheus.@inprogress`](@ref): Track number of inprogress operations; increment the
+   gauge when entering the section, decrement it when leaving.
 """
 Gauge(::String, ::String; kwargs...)
 
@@ -326,12 +322,6 @@ end
 ########################
 # https://prometheus.io/docs/instrumenting/writing_clientlibs/#summary
 
-# TODO: A summary SHOULD have the following methods:
-#  - Some way to time code for users in seconds. In Python this is the time()
-#    decorator/context manager. In Java this is startTimer/observeDuration. Units other than
-#    seconds MUST NOT be offered (if a user wants something else, they can do it by hand).
-#    This should follow the same pattern as Gauge/Histogram.
-
 mutable struct Summary <: Collector
     @const metric_name::String
     @const help::String
@@ -368,6 +358,7 @@ Construct a Summary collector.
 
 **Methods**
  - [`Prometheus.observe`](@ref): add an observation to the summary.
+ - [`Prometheus.@time`](@ref): time a section and add the elapsed time as an observation.
 """
 Summary(::String, ::String; kwargs...)
 
@@ -398,6 +389,142 @@ function collect!(metrics::Vector, summary::Summary)
         ),
     )
     return metrics
+end
+
+
+################
+# "Decorators" #
+################
+
+"""
+    Prometheus.@time collector expr
+
+Time the evaluation of `expr` and send the elapsed time in seconds to `collector`. The
+specific action depends on the type of collector:
+
+ - `collector :: Gauge`: set the value of the gauge to the elapsed time
+   ([`Prometheus.set`](@ref))
+ - `collector :: Summary`: add the elapsed time as an observation
+   ([`Prometheus.observe`](@ref))
+
+The expression to time, `expr`, can be a single expression (for example a function call), or
+a code block (`begin`, `let`, etc), e.g.
+```julia
+Prometheus.@time collector <expr>
+
+Prometheus.@time collector begin
+    <expr>
+end
+```
+
+It is also possible to apply the macro to a function *definition*, i.e.
+```julia
+Prometheus.@time collector function time_this(args...)
+    # function body
+end
+```
+to time every call to this function (covering all call sites).
+"""
+macro time(collector, expr)
+    return expr_gen(:time, collector, expr)
+end
+
+at_time(gauge::Gauge, v) = set(gauge, v)
+at_time(summary::Summary, v) = observe(summary, v)
+at_time(::Collector, v) = unreachable()
+
+"""
+    Prometheus.@inprogress collector expr
+
+Track the number of concurrent in-progress evaluations of `expr`. From the builtin
+collectors this is only applicable to the [`Gauge`](@ref) -- the value of the gauge is
+incremented with 1 when entering the section, and decremented with 1 when exiting the
+section.
+
+The expression, `expr`, can be a single expression (for example a function call), or a code
+block (`begin`, `let`, etc), e.g.
+```julia
+Prometheus.@inprogress collector <expr>
+
+Prometheus.@inprogress collector begin
+    <expr>
+end
+```
+
+It is also possible to apply the macro to a function *definition*, i.e.
+```julia
+Prometheus.@inprogress collector function track_this(args...)
+    # function body
+end
+```
+to track number of concurrent in-progress calls (covering all call sites).
+"""
+macro inprogress(collector, expr)
+    return expr_gen(:inprogress, collector, expr)
+end
+
+at_inprogress_enter(gauge::Gauge) = inc(gauge)
+at_inprogress_exit(gauge::Gauge) = dec(gauge)
+at_inprogress_enter(::Collector) = unreachable()
+at_inprogress_exit(::Collector) = unreachable()
+
+function expr_gen(macroname, collector, code)
+    if macroname === :time
+        local cllctr, t0, val
+        @gensym cllctr t0 val
+        preamble = Expr[
+            Expr(:(=), cllctr, esc(collector)),
+            Expr(:(=), t0, Expr(:call, time)),
+        ]
+        postamble = Expr[
+            Expr(:(=), val, Expr(:call, max, Expr(:call, -, Expr(:call, time), t0), 0.0)),
+            Expr(:call, at_time, cllctr, val)
+        ]
+    elseif macroname === :inprogress
+        local cllctr
+        @gensym cllctr
+        preamble = Expr[
+            Expr(:(=), cllctr, esc(collector)),
+            Expr(:call, at_inprogress_enter, cllctr),
+        ]
+        postamble = Expr[
+            Expr(:call, at_inprogress_exit, cllctr)
+        ]
+    else
+        unreachable()
+    end
+    local ret
+    @gensym ret
+    if Meta.isexpr(code, :function) || Base.is_short_function_def(code)
+        @assert length(code.args) == 2
+        fsig = esc(code.args[1])
+        fbody = esc(code.args[2])
+        return Expr(
+            code.head, # might as well preserve :function or :(=)
+            fsig,
+            Expr(
+                :block,
+                preamble...,
+                Expr(
+                    :tryfinally,
+                    Expr(:(=), ret, fbody),
+                    Expr(:block, postamble...,),
+                ),
+                ret,
+            ),
+        )
+    else
+        return Expr(
+            :block,
+            preamble...,
+            Expr(
+                :tryfinally,
+                Expr(:(=), ret, esc(code)),
+                Expr(:block, postamble...,),
+            ),
+            ret,
+        )
+    end
 end
 
 
