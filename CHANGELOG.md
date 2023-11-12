@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    concurrent evalutations of `<expr>`. Just like `Prometheus.@time`, valid `<expr>`s are
    single expressions, blocks, and function definitions. See documentation for more details.
    ([#6][github-6])
+ - New ways to specify label names and label values in `Prometheus.Family{C}`. Label names
+   can now be passed to the constructor as i) a tuple of strings or symbols, ii) a named
+   tuple type (names used for label names), or iii) a custom struct type (field names used
+   for label names). Similarly, label values (passed to e.g. `Prometheus.labels`) can be
+   passed as i) tuple of strings, ii) named tuple, iii) struct instance. See documentation
+   for examples and more details. ([#7][github-7])
 
 ## [1.0.1] - 2023-11-06
 ### Fixed
@@ -38,6 +44,7 @@ See [README.md](README.md) for details and documentation.
 
 
 [github-6]: https://github.com/fredrikekre/Prometheus.jl/pull/6
+[github-7]: https://github.com/fredrikekre/Prometheus.jl/pull/7
 
 [Unreleased]: https://github.com/fredrikekre/Prometheus.jl/compare/v1.0.1...HEAD
 [1.0.1]: https://github.com/fredrikekre/Prometheus.jl/compare/v1.0.0...v1.0.1
