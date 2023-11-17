@@ -44,40 +44,42 @@ function collect!(metrics::Vector, ::GCCollector)
     gc_live_bytes = Base.gc_live_bytes()
     # Push all the metrics
     push!(metrics,
-        Metric(
-            "counter", "julia_gc_alloc_total", "Total number of allocations (calls to malloc, realloc, etc)",
-            LabelNames(("type",)),
-            [
-                Sample(nothing, LabelValues(("bigalloc",)), gc_num.bigalloc),
-                Sample(nothing, LabelValues(("malloc",)), gc_num.malloc),
-                Sample(nothing, LabelValues(("poolalloc",)), gc_num.poolalloc),
-                Sample(nothing, LabelValues(("realloc",)), gc_num.realloc),
-            ],
-        ),
+        let label_names = LabelNames(("type",))
+            Metric(
+                "counter", "julia_gc_alloc_total", "Total number of allocations (calls to malloc, realloc, etc)",
+                [
+                    Sample(nothing, label_names, LabelValues(("bigalloc",)), gc_num.bigalloc),
+                    Sample(nothing, label_names, LabelValues(("malloc",)), gc_num.malloc),
+                    Sample(nothing, label_names, LabelValues(("poolalloc",)), gc_num.poolalloc),
+                    Sample(nothing, label_names, LabelValues(("realloc",)), gc_num.realloc),
+                ],
+            )
+        end,
         Metric(
             "counter", "julia_gc_free_total", "Total number of calls to free()",
-            nothing, Sample(nothing, nothing, gc_num.freecall),
+            Sample(nothing, nothing, nothing, gc_num.freecall),
         ),
         Metric(
-            "counter", "julia_gc_alloc_bytes_total", "Total number of allocated bytes", nothing,
-            Sample(nothing, nothing, Base.gc_total_bytes(gc_num)),
+            "counter", "julia_gc_alloc_bytes_total", "Total number of allocated bytes",
+            Sample(nothing, nothing, nothing, Base.gc_total_bytes(gc_num)),
         ),
         Metric(
-            "gauge", "julia_gc_live_bytes", "Current number of live bytes", nothing,
-            Sample(nothing, nothing, gc_live_bytes),
+            "gauge", "julia_gc_live_bytes", "Current number of live bytes",
+            Sample(nothing, nothing, nothing, gc_live_bytes),
         ),
         Metric(
-            "counter", "julia_gc_seconds_total", "Total time spent in garbage collection", nothing,
-            Sample(nothing, nothing, gc_num.total_time / 10^9), # [ns] to [s]
+            "counter", "julia_gc_seconds_total", "Total time spent in garbage collection",
+            Sample(nothing, nothing, nothing, gc_num.total_time / 10^9), # [ns] to [s]
         ),
-        Metric(
-            "counter", "julia_gc_collections_total", "Total number of calls to garbage collection",
-            LabelNames(("type",)),
-            [
-                Sample(nothing, LabelValues(("full",)), gc_num.full_sweep),
-                Sample(nothing, LabelValues(("minor",)), gc_num.pause - gc_num.full_sweep),
-            ],
-        ),
+        let label_names = LabelNames(("type",))
+            Metric(
+                "counter", "julia_gc_collections_total", "Total number of calls to garbage collection",
+                [
+                    Sample(nothing, label_names, LabelValues(("full",)), gc_num.full_sweep),
+                    Sample(nothing, label_names, LabelValues(("minor",)), gc_num.pause - gc_num.full_sweep),
+                ],
+            )
+        end,
     )
     return metrics
 end
