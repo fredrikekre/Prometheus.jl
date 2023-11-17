@@ -202,7 +202,7 @@ function collect!(metrics::Vector, counter::Counter)
     push!(metrics,
         Metric(
             "counter", counter.metric_name, counter.help,
-            nothing, Sample(nothing, nothing, @atomic(counter.value)),
+            Sample(nothing, nothing, nothing, @atomic(counter.value)),
         ),
     )
     return metrics
@@ -310,7 +310,7 @@ function collect!(metrics::Vector, gauge::Gauge)
     push!(metrics,
         Metric(
             "gauge", gauge.metric_name, gauge.help,
-            nothing, Sample(nothing, nothing, @atomic(gauge.value)),
+            Sample(nothing, nothing, nothing, @atomic(gauge.value)),
         ),
     )
     return metrics
@@ -381,10 +381,10 @@ end
 function collect!(metrics::Vector, summary::Summary)
     push!(metrics,
         Metric(
-            "summary", summary.metric_name, summary.help, nothing,
+            "summary", summary.metric_name, summary.help,
             [
-                Sample("_count", nothing, @atomic(summary._count)),
-                Sample("_sum", nothing, @atomic(summary._sum)),
+                Sample("_count", nothing, nothing, @atomic(summary._count)),
+                Sample("_sum", nothing, nothing, @atomic(summary._sum)),
             ]
         ),
     )
@@ -748,8 +748,9 @@ function collect!(metrics::Vector, family::Family{C}) where C
     type = prometheus_type(C)
     samples = Sample[]
     buf = Metric[]
+    label_names = family.label_names
     @lock family.lock begin
-        for (labels, child) in family.children
+        for (label_values, child) in family.children
             # collect!(...) the child, throw away the metric, but keep the samples
             child_metrics = collect!(resize!(buf, 0), child)
             length(child_metrics) != 1 && unreachable() # TODO: maybe this should be supported?
@@ -758,12 +759,12 @@ function collect!(metrics::Vector, family::Family{C}) where C
             # Unwrap and rewrap samples with the labels
             child_samples = child_metric.samples
             if child_samples isa Sample
-                push!(samples, Sample(child_samples.suffix, labels, child_samples.value))
+                push!(samples, Sample(child_samples.suffix, label_names, label_values, child_samples.value))
             else
                 @assert(child_samples isa Vector{Sample})
                 for child_sample in child_samples
                     @assert(child_sample.label_values === nothing)
-                    push!(samples, Sample(child_sample.suffix, labels, child_sample.value))
+                    push!(samples, Sample(child_sample.suffix, label_names, label_values, child_sample.value))
                 end
             end
         end
@@ -776,7 +777,7 @@ function collect!(metrics::Vector, family::Family{C}) where C
     end)
     push!(
         metrics,
-        Metric(type, family.metric_name, family.help, family.label_names, samples),
+        Metric(type, family.metric_name, family.help, samples),
     )
     return metrics
 end
@@ -788,6 +789,7 @@ end
 
 struct Sample
     suffix::Union{String, Nothing} # e.g. _count or _sum
+    label_names::Union{LabelNames, Nothing}
     label_values::Union{LabelValues, Nothing}
     value::Float64
 end
@@ -796,7 +798,6 @@ struct Metric
     type::String
     metric_name::String
     help::String
-    label_names::Union{LabelNames, Nothing}
     # TODO: Union{Tuple{Sample}, Vector{Sample}} would always make this iterable.
     samples::Union{Sample, Vector{Sample}}
 end
@@ -817,11 +818,10 @@ function expose_metric(io::IO, metric::Metric)
     print_escaped(io, metric.help, ('\\', '\n'))
     println(io)
     println(io, "# TYPE ", metric.metric_name, " ", metric.type)
-    label_names = metric.label_names
     samples = metric.samples
     if samples isa Sample
         # Single sample, no labels
-        @assert(label_names === nothing)
+        @assert(samples.label_names === nothing)
         @assert(samples.label_values === nothing)
         @assert(samples.suffix === nothing)
         val = samples.value
@@ -837,11 +837,13 @@ function expose_metric(io::IO, metric::Metric)
                 print(io, sample.suffix)
             end
             # Print potential labels
-            labels = sample.label_values
-            if label_names !== nothing && labels !== nothing
+            label_names = sample.label_names
+            label_values = sample.label_values
+            @assert((label_names === nothing) === (label_values === nothing))
+            if label_names !== nothing && label_values !== nothing
                 first = true
                 print(io, "{")
-                for (name, value) in zip(label_names.label_names, labels.label_values)
+                for (name, value) in zip(label_names.label_names, label_values.label_values)
                     first || print(io, ",")
                     print(io, name, "=\"")
                     print_escaped(io, value, ('\\', '\"', '\n'))

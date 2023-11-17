@@ -118,13 +118,13 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         if procc.clock_ticks_per_second > 0
             utime = parse(Int, fields[14 - 2]) / procc.clock_ticks_per_second
             stime = parse(Int, fields[15 - 2]) / procc.clock_ticks_per_second
+            label_names = LabelNames(("mode",))
             proc_cpu_seconds = Metric(
                 "counter", "process_cpu_seconds_total",
                 "Total CPU time (user and system mode) in seconds.",
-                LabelNames(("mode",)),
                 [
-                    Sample(nothing, LabelValues(("system",)), stime),
-                    Sample(nothing, LabelValues(("user",)), utime),
+                    Sample(nothing, label_names, LabelValues(("system",)), stime),
+                    Sample(nothing, label_names, LabelValues(("user",)), utime),
                 ],
             )
             push!(metrics, proc_cpu_seconds)
@@ -132,16 +132,16 @@ function collect!(metrics::Vector, procc::ProcessCollector)
             starttime = parse(Int, fields[22 - 2]) / procc.clock_ticks_per_second
             proc_start_time = Metric(
                 "gauge", "process_start_time_seconds",
-                "Start time since unix epoch in seconds.", nothing,
-                Sample(nothing, nothing, starttime + procc.system_boot_time),
+                "Start time since unix epoch in seconds.",
+                Sample(nothing, nothing, nothing, starttime + procc.system_boot_time),
             )
             push!(metrics, proc_start_time)
         end
         # Virtual memory
         vsize = parse(Int, fields[23 - 2])
         proc_virtual_memory = Metric(
-            "gauge", "process_virtual_memory_bytes", "Virtual memory size in bytes.", nothing,
-            Sample(nothing, nothing, vsize),
+            "gauge", "process_virtual_memory_bytes", "Virtual memory size in bytes.",
+            Sample(nothing, nothing, nothing, vsize),
         )
         push!(metrics, proc_virtual_memory)
         if procc.pagesize > 0
@@ -149,8 +149,8 @@ function collect!(metrics::Vector, procc::ProcessCollector)
             rss = parse(Int, fields[24 - 2])
             proc_resident_memory = Metric(
                 "gauge", "process_resident_memory_bytes",
-                "Resident memory size (RSS) in bytes.", nothing,
-                Sample(nothing, nothing, rss * procc.pagesize),
+                "Resident memory size (RSS) in bytes.",
+                Sample(nothing, nothing, nothing, rss * procc.pagesize),
             )
             push!(metrics, proc_resident_memory)
         end
@@ -166,8 +166,8 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         # Open file descriptors
         proc_open_fds = Metric(
             "gauge", "process_open_fds",
-            "Number of open file descriptors.", nothing,
-            Sample(nothing, nothing, proc_fd),
+            "Number of open file descriptors.",
+            Sample(nothing, nothing, nothing, proc_fd),
         )
         push!(metrics, proc_open_fds)
         # TODO: Maybe add maximum open fds from /proc/$(pid)/limits like the Python client
@@ -184,8 +184,8 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         if rchar !== nothing
             proc_io_rchar = Metric(
                 "counter", "process_io_rchar_bytes_total",
-                "Total number of bytes read in bytes (rchar from /proc/[pid]/io).", nothing,
-                Sample(nothing, nothing, parse(Int, rchar.captures[1]::AbstractString)),
+                "Total number of bytes read in bytes (rchar from /proc/[pid]/io).",
+                Sample(nothing, nothing, nothing, parse(Int, rchar.captures[1]::AbstractString)),
             )
             push!(metrics, proc_io_rchar)
         end
@@ -193,8 +193,8 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         if wchar !== nothing
             proc_io_wchar = Metric(
                 "counter", "process_io_wchar_bytes_total",
-                "Total number of bytes written in bytes (wchar from /proc/[pid]/io).", nothing,
-                Sample(nothing, nothing, parse(Int, wchar.captures[1]::AbstractString)),
+                "Total number of bytes written in bytes (wchar from /proc/[pid]/io).",
+                Sample(nothing, nothing, nothing, parse(Int, wchar.captures[1]::AbstractString)),
             )
             push!(metrics, proc_io_wchar)
         end
@@ -202,8 +202,8 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         if syscr !== nothing
             proc_io_syscr = Metric(
                 "counter", "process_io_syscr_total",
-                "Total number of read I/O operations (syscalls) (syscr from /proc/[pid]/io).", nothing,
-                Sample(nothing, nothing, parse(Int, syscr.captures[1]::AbstractString)),
+                "Total number of read I/O operations (syscalls) (syscr from /proc/[pid]/io).",
+                Sample(nothing, nothing, nothing, parse(Int, syscr.captures[1]::AbstractString)),
             )
             push!(metrics, proc_io_syscr)
         end
@@ -211,8 +211,8 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         if syscw !== nothing
             proc_io_syscw = Metric(
                 "counter", "process_io_syscw_total",
-                "Total number of write I/O operations (syscalls) (syscw from /proc/[pid]/io).", nothing,
-                Sample(nothing, nothing, parse(Int, syscw.captures[1]::AbstractString)),
+                "Total number of write I/O operations (syscalls) (syscw from /proc/[pid]/io).",
+                Sample(nothing, nothing, nothing, parse(Int, syscw.captures[1]::AbstractString)),
             )
             push!(metrics, proc_io_syscw)
         end
@@ -220,8 +220,8 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         if read_bytes !== nothing
             proc_io_read_bytes = Metric(
                 "counter", "process_io_read_bytes_total",
-                "Total number of bytes read from the file system (read_bytes from /proc/[pid]/io).", nothing,
-                Sample(nothing, nothing, parse(Int, read_bytes.captures[1]::AbstractString)),
+                "Total number of bytes read from the file system (read_bytes from /proc/[pid]/io).",
+                Sample(nothing, nothing, nothing, parse(Int, read_bytes.captures[1]::AbstractString)),
             )
             push!(metrics, proc_io_read_bytes)
         end
@@ -229,8 +229,8 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         if write_bytes !== nothing
             proc_io_write_bytes = Metric(
                 "counter", "process_io_write_bytes_total",
-                "Total number of bytes written to the file system (write_bytes from /proc/[pid]/io).", nothing,
-                Sample(nothing, nothing, parse(Int, write_bytes.captures[1]::AbstractString)),
+                "Total number of bytes written to the file system (write_bytes from /proc/[pid]/io).",
+                Sample(nothing, nothing, nothing, parse(Int, write_bytes.captures[1]::AbstractString)),
             )
             push!(metrics, proc_io_write_bytes)
         end
