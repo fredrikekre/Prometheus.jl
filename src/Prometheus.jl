@@ -576,7 +576,7 @@ stringify(str::String) = str
 stringify(str) = String(string(str))::String
 
 # Heterogeneous tuple
-function make_label_values(::LabelNames{N}, label_values::Tuple{Vararg{<:Any, N}}) where N
+function make_label_values(::LabelNames{N}, label_values::Tuple{Vararg{Any, N}}) where N
     return LabelValues(map(stringify, label_values)::NTuple{N, String})
 end
 
