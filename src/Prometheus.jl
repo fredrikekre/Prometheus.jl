@@ -600,23 +600,35 @@ function Base.:(==)(l1::LabelValues, l2::LabelValues)
     return l1.label_values == l2.label_values
 end
 
-struct Family{C, N} <: Collector
+struct Family{C, N, F} <: Collector
     metric_name::String
     help::String
     label_names::LabelNames{N}
     children::Dict{LabelValues{N}, C}
     lock::ReentrantLock
+    constructor::F
 
     function Family{C}(
-            metric_name::String, help::String, label_names;
-            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
+            metric_name::String, help::String, args_first, args_tail...;
+            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY, kwargs...,
         ) where {C}
+        # Support ... on non-final argument
+        args_all = (args_first, args_tail...,)
+        label_names = last(args_all)
+        args = Base.front(args_all)
+        @assert(isempty(args))
+        # TODO: Perhaps extract this into
+        # make_constructor(::Type{Collector}, metric_name, help, args...; kwargs...)
+        # so that some Collectors (like Counter) can skip the closure over args and kwargs.
+        function constructor()
+            return C(metric_name, help, args...; kwargs..., registry=nothing)::C
+        end
         labels = LabelNames(label_names)
         N = length(labels.label_names)
         children = Dict{LabelValues{N}, C}()
         lock = ReentrantLock()
-        family = new{C, N}(
-            verify_metric_name(metric_name), help, labels, children, lock,
+        family = new{C, N, typeof(constructor)}(
+            verify_metric_name(metric_name), help, labels, children, lock, constructor,
         )
         if registry !== nothing
             register(registry, family)
@@ -626,14 +638,17 @@ struct Family{C, N} <: Collector
 end
 
 """
-    Prometheus.Family{C}(name, help, label_names; registry=DEFAULT_REGISTRY)
+    Prometheus.Family{C}(name, help, args..., label_names; registry=DEFAULT_REGISTRY, kwargs...)
 
 Create a labeled collector family with labels given by `label_names`. For every new set of
-label values encountered a new collector of type `C <: Collector` will be created.
+label values encountered a new collector of type `C <: Collector` will be created, see
+[`Prometheus.labels`](@ref).
 
 **Arguments**
  - `name :: String`: the name of the family metric.
  - `help :: String`: the documentation for the family metric.
+ - `args...`: any extra positional arguments required for `C`s constructor, see
+   [`Prometheus.labels`](@ref).
  - `label_names`: the label names for the family. Label names can be given as either of the
    following (typically matching the methods label values will be given later, see
    [`Prometheus.labels`](@ref)):
@@ -654,9 +669,11 @@ label values encountered a new collector of type `C <: Collector` will be create
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
+ - `kwargs...`: any extra keyword arguments required for `C`s constructor, see
+   [`Prometheus.labels`](@ref).
 
 **Methods**
- - [`Prometheus.labels`](@ref): return the collector for a specific set of labels.
+ - [`Prometheus.labels`](@ref): get or create the collector for a specific set of labels.
  - [`Prometheus.remove`](@ref): remove the collector for a specific set of labels.
  - [`Prometheus.clear`](@ref): remove all collectors in the family.
 
@@ -680,8 +697,11 @@ end
 """
     Prometheus.labels(family::Family{C}, label_values) where C
 
-Return the collector of type `C` from the family corresponding to the labels given by
-`label_values`.
+Get or create the collector of type `C` from the family corresponding to the labels given by
+`label_values`. If no collector exist for the input labels a new one is created by invoking
+the `C` constructor as `C(name, help, args...; kwargs..., registry=nothing)`, where `name`,
+`help`, `args...`, and `kwargs...` are the arguments from the family constructor, see
+[`Family`](@ref).
 
 Similarly to when creating the [`Family`](@ref), `label_values` can be given as either of
 the following:
@@ -701,8 +721,7 @@ All non-string values (e.g. `200` in the examples above) are stringified using `
 function labels(family::Family{C, N}, label_values) where {C, N}
     labels = make_label_values(family.label_names, label_values)::LabelValues{N}
     collector = @lock family.lock get!(family.children, labels) do
-        # TODO: Avoid the re-verification of the metric name?
-        C(family.metric_name, family.help; registry=nothing)
+        family.constructor()::C
     end
     return collector
 end
