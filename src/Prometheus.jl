@@ -811,6 +811,15 @@ struct Sample
     label_names::Union{LabelNames, Nothing}
     label_values::Union{LabelValues, Nothing}
     value::Float64
+    function Sample(
+            suffix::Union{String, Nothing},
+            label_names::Union{Nothing, LabelNames{N}},
+            label_values::Union{Nothing, LabelValues{N}},
+            value::Real,
+        ) where N
+        @assert((label_names === nothing) === (label_values === nothing))
+        return new(suffix, label_names, label_values, value)
+    end
 end
 
 struct Metric
