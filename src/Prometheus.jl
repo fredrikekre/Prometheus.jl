@@ -20,16 +20,19 @@ function Base.showerror(io::IO, err::ArgumentError)
     print(io, "Prometheus.", nameof(typeof(err)), ": ", err.msg)
 end
 
-struct AssertionError <: PrometheusException end
+struct AssertionError <: PrometheusException
+    msg::String
+end
 macro assert(cond)
-    return :($(esc(cond)) || throw(AssertionError()))
+    msg = string(cond)
+    return :($(esc(cond)) || throw(AssertionError($msg)))
 end
 
-function Base.showerror(io::IO, ::AssertionError)
+function Base.showerror(io::IO, err::AssertionError)
     print(
         io,
-        "Prometheus.AssertionError: this is unexpected. Please file an issue at " *
-        "https://github.com/fredrikekre/Prometheus.jl/issues/new.",
+        "Prometheus.AssertionError: `", err.msg, "`. This is unexpected, please file an " *
+        "issue at https://github.com/fredrikekre/Prometheus.jl/issues/new.",
     )
 end
 

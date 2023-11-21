@@ -770,8 +770,12 @@ end
 end
 
 @testset "Utilities" begin
-    @test_throws Prometheus.AssertionError Prometheus.@assert false
-    @test occursin("Please file an issue", sprint(showerror, Prometheus.AssertionError()))
+    x = 1
+    err = try Prometheus.@assert x === nothing; catch e; e; end
+    @test err isa Prometheus.AssertionError
+    @test err.msg == "x === nothing"
+    @test occursin("`x === nothing`", sprint(showerror, err))
+    @test occursin("please file an issue", sprint(showerror, err))
     @test occursin(
         "Prometheus.ArgumentError: err",
         sprint(showerror, Prometheus.ArgumentError("err")),
