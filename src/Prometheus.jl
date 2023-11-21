@@ -25,9 +25,7 @@ unreachable() = throw(UnreachableError())
 
 struct AssertionError <: PrometheusException end
 macro assert(cond)
-    return quote
-        $(esc(cond)) || throw(AssertionError())
-    end
+    return :($(esc(cond)) || throw(AssertionError()))
 end
 
 function Base.showerror(io::IO, err::Union{AssertionError, UnreachableError})
