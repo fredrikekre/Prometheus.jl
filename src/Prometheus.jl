@@ -317,6 +317,119 @@ function collect!(metrics::Vector, gauge::Gauge)
 end
 
 
+##########################
+# Histogram <: Collector #
+##########################
+# https://prometheus.io/docs/instrumenting/writing_clientlibs/#histogram
+
+# A histogram SHOULD have the same default buckets as other client libraries.
+# https://github.com/prometheus/client_python/blob/d8306b7b39ed814f3ec667a7901df249cee8a956/prometheus_client/metrics.py#L565
+const DEFAULT_BUCKETS = [
+    .005, .01, .025, .05, .075, .1, .25, .5, .75, 1.0, 2.5, 5.0, 7.5, 10.0, Inf,
+]
+
+mutable struct Histogram <: Collector
+    @const metric_name::String
+    @const help::String
+    @const buckets::Vector{Float64}
+    @atomic _count::Int
+    @atomic _sum::Float64
+    @const bucket_counters::Vector{Threads.Atomic{Int}}
+
+    function Histogram(
+            metric_name::String, help::String; buckets::Vector{Float64}=DEFAULT_BUCKETS,
+            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
+        )
+        # Make a copy of and verify buckets
+        buckets = copy(buckets)
+        issorted(buckets) || throw(ArgumentError("buckets must be sorted"))
+        length(buckets) > 0 && buckets[end] != Inf && push!(buckets, Inf)
+        length(buckets) < 2 && throw(ArgumentError("must have at least two buckets"))
+        initial_sum = 0.0
+        initial_count = 0
+        bucket_counters = [Threads.Atomic{Int}(0) for _ in 1:length(buckets)]
+        histogram = new(
+            verify_metric_name(metric_name), help, buckets,
+            initial_count, initial_sum, bucket_counters,
+        )
+        if registry !== nothing
+            register(registry, histogram)
+        end
+        return histogram
+    end
+end
+
+"""
+    Prometheus.Histogram(name, help; buckets=DEFAULT_BUCKETS, registry=DEFAULT_REGISTRY)
+
+Construct a Histogram collector.
+
+**Arguments**
+ - `name :: String`: the name of the histogram metric.
+ - `help :: String`: the documentation for the histogram metric.
+
+**Keyword arguments**
+ - `buckets :: Vector{Float64}`: the upper bounds for the histogram buckets. The buckets
+   must be sorted. `Inf` will be added as a last bucket if not already included. The default
+   buckets are `DEFAULT_BUCKETS = $(DEFAULT_BUCKETS)`.
+ - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
+   collector. If not specified the default registry is used. Pass `registry = nothing` to
+   skip registration.
+
+**Methods**
+ - [`Prometheus.observe`](@ref): add an observation to the histogram.
+ - [`Prometheus.@time`](@ref): time a section and add the elapsed time as an observation.
+"""
+Histogram(::String, ::String; kwargs...)
+
+function metric_names(histogram::Histogram)
+    return (
+        histogram.metric_name * "_count", histogram.metric_name * "_sum",
+        histogram.metric_name,
+    )
+end
+
+"""
+    Prometheus.observe(histogram::Histogram, v)
+
+Add the observed value `v` to the histogram.
+This increases the sum and count of the histogram with `v` and `1`, respectively, and
+increments the counter for all buckets containing `v`.
+"""
+function observe(histogram::Histogram, v)
+    @atomic histogram._count += 1
+    @atomic histogram._sum += v
+    for (bucket, bucket_counter) in zip(histogram.buckets, histogram.bucket_counters)
+        # TODO: Iterate in reverse and break early
+        if v <= bucket
+            Threads.atomic_add!(bucket_counter, 1)
+        end
+    end
+    return nothing
+end
+
+function collect!(metrics::Vector, histogram::Histogram)
+    label_names = LabelNames(("le",))
+    push!(metrics,
+        Metric(
+            "histogram", histogram.metric_name, histogram.help,
+            [
+                Sample("_count", nothing, nothing, @atomic(histogram._count)),
+                Sample("_sum", nothing, nothing, @atomic(histogram._sum)),
+                (
+                    Sample(
+                        nothing, label_names,
+                        make_label_values(label_names, (histogram.buckets[i],)),
+                        histogram.bucket_counters[i][],
+                    ) for i in 1:length(histogram.buckets)
+               )...,
+            ]
+        ),
+    )
+    return metrics
+end
+
+
 ########################
 # Summary <: Collector #
 ########################
@@ -357,7 +470,8 @@ Construct a Summary collector.
    skip registration.
 
 **Methods**
- - [`Prometheus.observe`](@ref): add an observation to the summary.
+ - [`Prometheus.observe`](@ref observe(::Summary, ::Any)): add an observation to the
+   summary.
  - [`Prometheus.@time`](@ref): time a section and add the elapsed time as an observation.
 """
 Summary(::String, ::String; kwargs...)
@@ -404,8 +518,8 @@ specific action depends on the type of collector:
 
  - `collector :: Gauge`: set the value of the gauge to the elapsed time
    ([`Prometheus.set`](@ref))
- - `collector :: Summary`: add the elapsed time as an observation
-   ([`Prometheus.observe`](@ref))
+ - `collector :: Histogram` and `collector :: Summary`: add the elapsed time as an
+   observation ([`Prometheus.observe`](@ref))
 
 The expression to time, `expr`, can be a single expression (for example a function call), or
 a code block (`begin`, `let`, etc), e.g.
@@ -431,6 +545,7 @@ end
 
 at_time(gauge::Gauge, v) = set(gauge, v)
 at_time(summary::Summary, v) = observe(summary, v)
+at_time(histogram::Histogram, v) = observe(histogram, v)
 at_time(::Collector, v) = unreachable()
 
 """
@@ -760,6 +875,7 @@ end
 
 prometheus_type(::Type{Counter}) = "counter"
 prometheus_type(::Type{Gauge}) = "gauge"
+prometheus_type(::Type{Histogram}) = "histogram"
 prometheus_type(::Type{Summary}) = "summary"
 prometheus_type(::Type) = unreachable()
 
@@ -782,8 +898,30 @@ function collect!(metrics::Vector, family::Family{C}) where C
             else
                 @assert(child_samples isa Vector{Sample})
                 for child_sample in child_samples
-                    @assert(child_sample.label_values === nothing)
-                    push!(samples, Sample(child_sample.suffix, label_names, label_values, child_sample.value))
+                    if C === Histogram && (child_sample.label_names !== nothing) && (child_sample.label_values !== nothing)
+                        # TODO: Only allow child samples to be labeled for Histogram
+                        # collectors for now.
+                        @assert(
+                            length(child_sample.label_names.label_names) ==
+                            length(child_sample.label_values.label_values)
+                        )
+                        # TODO: Bypass constructor verifications
+                        merged_names = LabelNames((
+                            label_names.label_names...,
+                            child_sample.label_names.label_names...,
+                        ))
+                        merged_values = LabelValues((
+                            label_values.label_values...,
+                            child_sample.label_values.label_values...,
+                        ))
+                        push!(samples, Sample(child_sample.suffix, merged_names, merged_values, child_sample.value))
+                    else
+                        @assert(
+                            (child_sample.label_names  === nothing) ===
+                            (child_sample.label_values === nothing)
+                        )
+                        push!(samples, Sample(child_sample.suffix, label_names, label_values, child_sample.value))
+                    end
                 end
             end
         end

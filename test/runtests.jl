@@ -167,6 +167,76 @@ end
           """
 end
 
+@testset "Prometheus.Histogram" begin
+    # Constructors and implicit registration
+    empty!(Prometheus.DEFAULT_REGISTRY.collectors)
+    c = Prometheus.Histogram("metric_name_histogram", "A histogram.")
+    @test c in Prometheus.DEFAULT_REGISTRY.collectors
+    r = Prometheus.CollectorRegistry()
+    c = Prometheus.Histogram("metric_name_histogram", "A histogram."; registry=r)
+    @test c in r.collectors
+    @test c.buckets == Prometheus.DEFAULT_BUCKETS
+    @test c._count == 0
+    @test c._sum == 0
+    @test all(x -> x[] == 0, c.bucket_counters)
+    @test_throws(
+        Prometheus.ArgumentError("metric name \"invalid-name\" is invalid"),
+        Prometheus.Histogram("invalid-name", "help"),
+    )
+    # Prometheus.observe(...)
+    v1 = 0.9
+    Prometheus.observe(c, v1)
+    @test c._count == 1
+    @test c._sum == v1
+    for (ub, counter, known_count) in zip(c.buckets, c.bucket_counters, [zeros(Int, 9); ones(Int, 6)])
+        @test counter[] == (v1 > ub ? 0 : 1) == known_count
+    end
+    v2 = 10v1
+    Prometheus.observe(c, v2)
+    @test c._count == 2
+    @test c._sum == v1 + v2
+    for (ub, counter, known_count) in zip(c.buckets, c.bucket_counters, [zeros(Int, 9); [1, 1, 1, 1]; [2, 2]])
+        @test counter[] == ((v2 > ub && v1 > ub) ? 0 : v2 > ub ? 1 : 2) == known_count
+    end
+    # Prometheus.collect(...)
+    r = Prometheus.CollectorRegistry()
+    buckets = [1.0, 2.0, Inf]
+    c = Prometheus.Histogram("metric_name_histogram", "A histogram."; buckets=buckets, registry=r)
+    Prometheus.observe(c, 0.5)
+    Prometheus.observe(c, 1.6)
+    metrics = Prometheus.collect(c)
+    @test length(metrics) == 1
+    metric = metrics[1]
+    @test metric.metric_name == c.metric_name
+    @test metric.help == c.help
+    @test length(metric.samples) == length(buckets) + 2
+    s1, s2 = metric.samples[1], metric.samples[2]
+    @test s1.suffix == "_count"
+    @test s2.suffix == "_sum"
+    @test s1.label_values === nothing
+    @test s2.label_values === nothing
+    @test s1.value == 2
+    @test s2.value == 0.5 + 1.6
+    for (ub, counter, sample, known_count) in zip(c.buckets, c.bucket_counters, metric.samples[3:end], [1, 2, 2])
+        @test sample.suffix === nothing
+        @test (sample.label_names::Prometheus.LabelNames{1}).label_names === (:le,)
+        @test (sample.label_values::Prometheus.LabelValues{1}).label_values == (string(ub),)
+        @test sample.value == counter[] == known_count
+    end
+    # Prometheus.expose_metric(...)
+    @test sprint(Prometheus.expose_metric, metric) ==
+          sprint(Prometheus.expose_io, r) ==
+          """
+          # HELP metric_name_histogram A histogram.
+          # TYPE metric_name_histogram histogram
+          metric_name_histogram_count 2
+          metric_name_histogram_sum 2.1
+          metric_name_histogram{le="1.0"} 1
+          metric_name_histogram{le="2.0"} 2
+          metric_name_histogram{le="Inf"} 2
+          """
+end
+
 @testset "Prometheus.LabelNames and Prometheus.LabelValues" begin
     @test_throws(
         Prometheus.ArgumentError("label name \"invalid-label\" is invalid"),
@@ -277,32 +347,46 @@ end
     @test 0.3 > gauge.value > 0.1
 end
 
-@testset "Prometheus.@time summary::Summary" begin
-    summary = Prometheus.Summary("call_time", "Time of calls"; registry=nothing)
-    Prometheus.@time summary sleep(0.1)
-    @test 0.3 > summary._sum > 0.1
-    @test summary._count == 1
-    Prometheus.@time summary let
+@testset "Prometheus.@time collector::$(Collector)" for Collector in (Prometheus.Histogram, Prometheus.Summary)
+    ishist = Collector === Prometheus.Histogram
+    buckets = [1.0, Inf]
+    collector = Collector(
+        "call_time", "Time of calls";
+        (ishist ? (; buckets=buckets) : (;))...,
+        registry=nothing,
+    )
+    Prometheus.@time collector sleep(0.1)
+    @test 0.3 > collector._sum > 0.1
+    @test collector._count == 1
+    ishist && @test (x->x[]).(collector.bucket_counters) == [1, 1]
+    Prometheus.@time collector let
         sleep(0.1)
     end
-    @test 0.4 > summary._sum > 0.2
-    @test summary._count == 2
-    Prometheus.@time summary f() = sleep(0.1)
+    @test 0.4 > collector._sum > 0.2
+    @test collector._count == 2
+    ishist && @test (x->x[]).(collector.bucket_counters) == [2, 2]
+    Prometheus.@time collector f() = sleep(0.1)
     @sync begin
         @async f()
         @async f()
     end
-    @test 0.7 > summary._sum > 0.4
-    @test summary._count == 4
-    Prometheus.@time summary function g()
+    @test 0.7 > collector._sum > 0.4
+    @test collector._count == 4
+    ishist && @test (x->x[]).(collector.bucket_counters) == [4, 4]
+    Prometheus.@time collector function g()
         sleep(0.1)
     end
     @sync begin
         @async g()
         @async g()
     end
-    @test 0.9 > summary._sum > 0.6
-    @test summary._count == 6
+    @test 0.9 > collector._sum > 0.6
+    @test collector._count == 6
+    ishist && @test (x->x[]).(collector.bucket_counters) == [6, 6]
+    if ishist
+        Prometheus.@time collector sleep(1.1)
+        @test (x->x[]).(collector.bucket_counters) == [6, 7]
+    end
 end
 
 @testset "Prometheus.@inprogress gauge::Gauge" begin
@@ -353,11 +437,12 @@ end
     @test_throws Prometheus.UnreachableError Prometheus.at_inprogress_exit(Coll())
 end
 
-@testset "Prometheus.Family{Summary}" begin
+@testset "Prometheus.Family{$Collector}" for Collector in (Prometheus.Histogram, Prometheus.Summary)
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Family{Prometheus.Summary}(
+    c = Prometheus.Family{Collector}(
         "http_request_time", "Time to process requests.",
         ("endpoint", "status_code");
+        (Collector === Prometheus.Histogram ? (; buckets = [2.0, Inf]) : (;))...,
         registry = r,
     )
     @test c in r.collectors
@@ -390,25 +475,50 @@ end
     metric = metrics[1]
     @test metric.metric_name == c.metric_name
     @test metric.help == c.help
-    @test length(metric.samples) == 4
-    s1, s2, s3, s4 = metric.samples
-    @test s1.label_values.label_values == s2.label_values.label_values == ("/bar/", "404")
-    @test s3.label_values.label_values == s4.label_values.label_values == ("/foo/", "200")
-    @test s1.value == 2   # _count
-    @test s2.value == 6.4 # _sum
-    @test s3.value == 2   # _count
-    @test s4.value == 4.6 # _sum
-    # Prometheus.expose_metric(...)
-    @test sprint(Prometheus.expose_metric, metric) ==
-          sprint(Prometheus.expose_io, r) ==
-          """
-          # HELP http_request_time Time to process requests.
-          # TYPE http_request_time summary
-          http_request_time_count{endpoint="/bar/",status_code="404"} 2
-          http_request_time_sum{endpoint="/bar/",status_code="404"} 6.4
-          http_request_time_count{endpoint="/foo/",status_code="200"} 2
-          http_request_time_sum{endpoint="/foo/",status_code="200"} 4.6
-          """
+    if Collector === Prometheus.Histogram
+        buckets = Prometheus.labels(c, l1).buckets
+        @test length(buckets) == length(Prometheus.labels(c, l2).buckets)
+        @test length(metric.samples) == 2 * (length(buckets) + 2)
+        # _count and _sum samples
+        s1, s2, s5, s6 = metric.samples[[1, 2, 5, 6]]
+        @test s1.label_values.label_values == s2.label_values.label_values == ("/bar/", "404")
+        @test s5.label_values.label_values == s6.label_values.label_values == ("/foo/", "200")
+        @test s1.value == 2   # _count
+        @test s2.value == 6.4 # _sum
+        @test s5.value == 2   # _count
+        @test s6.value == 4.6 # _sum
+        # {le} samples
+        for (ls, subrange) in ((l1, 7:8), (l2, 3:4))
+            for (ub, counter, sample) in zip(buckets, Prometheus.labels(c, ls).bucket_counters, metric.samples[subrange])
+                @test sample.suffix === nothing
+                @test (sample.label_names::Prometheus.LabelNames{3}).label_names ===
+                      (:endpoint, :status_code, :le)
+                @test (sample.label_values::Prometheus.LabelValues{3}).label_values ==
+                      (ls..., string(ub))
+                @test sample.value == counter[]
+            end
+        end
+    else # Collector === Prometheus.Summary
+        @test length(metric.samples) == 4
+        s1, s2, s3, s4 = metric.samples
+        @test s1.label_values.label_values == s2.label_values.label_values == ("/bar/", "404")
+        @test s3.label_values.label_values == s4.label_values.label_values == ("/foo/", "200")
+        @test s1.value == 2   # _count
+        @test s2.value == 6.4 # _sum
+        @test s3.value == 2   # _count
+        @test s4.value == 4.6 # _sum
+        # Prometheus.expose_metric(...)
+        @test sprint(Prometheus.expose_metric, metric) ==
+              sprint(Prometheus.expose_io, r) ==
+              """
+              # HELP http_request_time Time to process requests.
+              # TYPE http_request_time summary
+              http_request_time_count{endpoint="/bar/",status_code="404"} 2
+              http_request_time_sum{endpoint="/bar/",status_code="404"} 6.4
+              http_request_time_count{endpoint="/foo/",status_code="200"} 2
+              http_request_time_sum{endpoint="/foo/",status_code="200"} 4.6
+              """
+    end
 end
 
 @testset "Label types for Prometheus.Family{C}" begin

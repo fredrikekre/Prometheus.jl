@@ -61,9 +61,9 @@ exposed.
 ## Collectors
 
 This section documents the collectors that are currently supported. This include the "basic"
-collectors ([Counter](@ref), [Gauge](@ref), [Summary](@ref)) as well as some custom
-collectors ([GCCollector](@ref), [ProcessCollector](@ref)). There is also a section on how
-to implement your own collector, see [Custom collectors](@ref).
+collectors ([Counter](@ref), [Gauge](@ref), [Histogram](@ref), [Summary](@ref)) as well as
+some custom collectors ([GCCollector](@ref), [ProcessCollector](@ref)). There is also a
+section on how to implement your own collector, see [Custom collectors](@ref).
 
 Upstream documentation:
  - <https://prometheus.io/docs/concepts/metric_types/>
@@ -109,6 +109,23 @@ Prometheus.set(::Prometheus.Gauge, ::Any)
 Prometheus.set_to_current_time(::Prometheus.Gauge)
 Prometheus.@time
 Prometheus.@inprogress
+```
+
+### Histogram
+
+Quoting the [upstream
+documentation](https://prometheus.io/docs/concepts/metric_types/#histogram):
+> A histogram samples observations (usually things like request durations or response sizes)
+> and counts them in configurable buckets. It also provides a sum of all observed values.
+
+#### Histogram API reference
+
+```@docs
+Prometheus.Histogram(::String, ::String; kwargs...)
+Prometheus.observe(::Prometheus.Histogram, ::Any)
+```
+```@docs; canonical=false
+Prometheus.@time
 ```
 
 ### Summary
