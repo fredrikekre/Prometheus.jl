@@ -1042,8 +1042,10 @@ end
 function expose_io(io::IO, reg::CollectorRegistry)
     # Collect all metrics
     metrics = Metric[]
-    @lock reg.lock for collector in reg.collectors
-        collect!(metrics, collector)
+    @lock reg.lock begin
+        for collector in reg.collectors
+            collect!(metrics, collector)
+        end
     end
     sort!(metrics; by = metric -> metric.metric_name)
     # Write to IO
