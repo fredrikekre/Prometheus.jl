@@ -20,20 +20,16 @@ function Base.showerror(io::IO, err::ArgumentError)
     print(io, "Prometheus.", nameof(typeof(err)), ": ", err.msg)
 end
 
-struct UnreachableError <: PrometheusException end
-unreachable() = throw(UnreachableError())
-
 struct AssertionError <: PrometheusException end
 macro assert(cond)
     return :($(esc(cond)) || throw(AssertionError()))
 end
 
-function Base.showerror(io::IO, err::Union{AssertionError, UnreachableError})
+function Base.showerror(io::IO, ::AssertionError)
     print(
         io,
-        "Prometheus.", nameof(typeof(err)),
-        ": this is unexpected. Please file an issue at " *
-        "https://github.com/fredrikekre/Prometheus.jl/issues/new",
+        "Prometheus.AssertionError: this is unexpected. Please file an issue at " *
+        "https://github.com/fredrikekre/Prometheus.jl/issues/new.",
     )
 end
 
@@ -544,7 +540,6 @@ end
 at_time(gauge::Gauge, v) = set(gauge, v)
 at_time(summary::Summary, v) = observe(summary, v)
 at_time(histogram::Histogram, v) = observe(histogram, v)
-at_time(::Collector, v) = unreachable()
 
 """
     Prometheus.@inprogress collector expr
@@ -578,8 +573,6 @@ end
 
 at_inprogress_enter(gauge::Gauge) = inc(gauge)
 at_inprogress_exit(gauge::Gauge) = dec(gauge)
-at_inprogress_enter(::Collector) = unreachable()
-at_inprogress_exit(::Collector) = unreachable()
 
 function expr_gen(macroname, collector, code)
     if macroname === :time
@@ -604,7 +597,7 @@ function expr_gen(macroname, collector, code)
             Expr(:call, at_inprogress_exit, cllctr)
         ]
     else
-        unreachable()
+        throw(ArgumentError("unknown macro name $(repr(macroname))"))
     end
     local ret
     @gensym ret
@@ -875,7 +868,6 @@ prometheus_type(::Type{Counter}) = "counter"
 prometheus_type(::Type{Gauge}) = "gauge"
 prometheus_type(::Type{Histogram}) = "histogram"
 prometheus_type(::Type{Summary}) = "summary"
-prometheus_type(::Type) = unreachable()
 
 function collect!(metrics::Vector, family::Family{C}) where C
     type = prometheus_type(C)
@@ -886,7 +878,7 @@ function collect!(metrics::Vector, family::Family{C}) where C
         for (label_values, child) in family.children
             # collect!(...) the child, throw away the metric, but keep the samples
             child_metrics = collect!(resize!(buf, 0), child)
-            length(child_metrics) != 1 && unreachable() # TODO: maybe this should be supported?
+            @assert length(child_metrics) == 1 # TODO: maybe this should be supported?
             child_metric = child_metrics[1]
             @assert(child_metric.type == type)
             # Unwrap and rewrap samples with the labels
