@@ -646,9 +646,15 @@ end
         r_nogzip = HTTP.request(
             "GET", "http://localhost:8123/metrics/nogzip", ["Accept-Encoding" => enc]
         )
-        @test HTTP.header(r_nogzip, "Content-Encoding") != "gzip"
-        @test String(r_nogzip.body) == reference_output # HTTP.jl decompresses gzip
+        @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
+        @test String(r_nogzip.body) == reference_output
     end
+    # Test missing Accept-Encoding (HTTP.jl adds it automatically unless explicitly set)
+    r_nogzip = HTTP.request(
+        "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => ""],
+    )
+    @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
+    @test String(r_nogzip.body) == reference_output
     # Clean up
     close(server)
     wait(server)
