@@ -430,11 +430,10 @@ end
     @test gauge.value == 0
 end
 
+# TODO: Document interface and test it
 @testset "Custom collector with @time/@inprogress" begin
-    struct Coll <: Prometheus.Collector end
-    @test_throws Prometheus.UnreachableError Prometheus.at_time(Coll(), 1.0)
-    @test_throws Prometheus.UnreachableError Prometheus.at_inprogress_enter(Coll())
-    @test_throws Prometheus.UnreachableError Prometheus.at_inprogress_exit(Coll())
+    # struct Coll <: Prometheus.Collector end
+    @test_throws Prometheus.ArgumentError Prometheus.expr_gen(:unknown, nothing, nothing)
 end
 
 @testset "Prometheus.Family{$Collector}" for Collector in (Prometheus.Histogram, Prometheus.Summary)
@@ -771,13 +770,10 @@ end
 end
 
 @testset "Utilities" begin
-    @test_throws Prometheus.UnreachableError Prometheus.unreachable()
-    @test_throws Prometheus.AssertionError   Prometheus.@assert false
-    @test occursin("unexpected", sprint(showerror, Prometheus.UnreachableError()))
-    @test occursin("unexpected", sprint(showerror, Prometheus.AssertionError()))
+    @test_throws Prometheus.AssertionError Prometheus.@assert false
+    @test occursin("Please file an issue", sprint(showerror, Prometheus.AssertionError()))
     @test occursin(
         "Prometheus.ArgumentError: err",
         sprint(showerror, Prometheus.ArgumentError("err")),
     )
-    @test_throws Prometheus.UnreachableError Prometheus.prometheus_type(Int)
 end
