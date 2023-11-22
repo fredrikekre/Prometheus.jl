@@ -179,19 +179,19 @@ function metric_names(counter::Counter)
 end
 
 """
-    Prometheus.inc(counter::Counter, v = 1)
+    Prometheus.inc(counter::Counter, v::Real = 1)
 
 Increment the value of the counter with `v`. The value defaults to `v = 1`.
 
 Throw a `Prometheus.ArgumentError` if `v < 0` (a counter must not decrease).
 """
-function inc(counter::Counter, v = 1.0)
+function inc(counter::Counter, v::Real = 1.0)
     if v < 0
         throw(ArgumentError(
             "invalid value $v: a counter must not decrease"
         ))
     end
-    @atomic counter.value += v
+    @atomic counter.value += convert(Float64, v)
     return nothing
 end
 
@@ -262,34 +262,34 @@ function metric_names(gauge::Gauge)
 end
 
 """
-    Prometheus.inc(gauge::Gauge, v = 1)
+    Prometheus.inc(gauge::Gauge, v::Real = 1)
 
 Increment the value of the gauge with `v`.
 `v` defaults to `v = 1`.
 """
-function inc(gauge::Gauge, v = 1.0)
-    @atomic gauge.value += v
+function inc(gauge::Gauge, v::Real = 1.0)
+    @atomic gauge.value += convert(Float64, v)
     return nothing
 end
 
 """
-    Prometheus.dec(gauge::Gauge, v = 1)
+    Prometheus.dec(gauge::Gauge, v::Real = 1)
 
 Decrement the value of the gauge with `v`.
 `v` defaults to `v = 1`.
 """
-function dec(gauge::Gauge, v = 1.0)
-    @atomic gauge.value -= v
+function dec(gauge::Gauge, v::Real = 1.0)
+    @atomic gauge.value -= convert(Float64, v)
     return nothing
 end
 
 """
-    Prometheus.set(gauge::Gauge, v)
+    Prometheus.set(gauge::Gauge, v::Real)
 
 Set the value of the gauge to `v`.
 """
-function set(gauge::Gauge, v)
-    @atomic gauge.value = v
+function set(gauge::Gauge, v::Real)
+    @atomic gauge.value = convert(Float64, v)
     return nothing
 end
 
@@ -387,13 +387,14 @@ function metric_names(histogram::Histogram)
 end
 
 """
-    Prometheus.observe(histogram::Histogram, v)
+    Prometheus.observe(histogram::Histogram, v::Real)
 
 Add the observed value `v` to the histogram.
 This increases the sum and count of the histogram with `v` and `1`, respectively, and
 increments the counter for all buckets containing `v`.
 """
-function observe(histogram::Histogram, v)
+function observe(histogram::Histogram, v::Real)
+    v = convert(Float64, v)
     @atomic histogram._count += 1
     @atomic histogram._sum += v
     for (bucket, bucket_counter) in zip(histogram.buckets, histogram.bucket_counters)
@@ -478,14 +479,14 @@ function metric_names(summary::Summary)
 end
 
 """
-    Prometheus.observe(summary::Summary, v)
+    Prometheus.observe(summary::Summary, v::Real)
 
 Add the observed value `v` to the summary.
 This increases the sum and count of the summary with `v` and `1`, respectively.
 """
-function observe(summary::Summary, v)
+function observe(summary::Summary, v::Real)
     @atomic summary._count += 1
-    @atomic summary._sum += v
+    @atomic summary._sum += convert(Float64, v)
     return nothing
 end
 
