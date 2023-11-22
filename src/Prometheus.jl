@@ -3,7 +3,6 @@ module Prometheus
 using CodecZlib: GzipCompressorStream
 using HTTP: HTTP
 using SimpleBufferStream: BufferStream
-using Sockets: Sockets
 
 abstract type Collector end
 
