@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - `Base.getindex` is overloaded for the `Prometheus.Family` collector to have the same
    meaning as `Prometheus.labels`. `family[labels]` is equivalent to
    `Prometheus.labels(family, labels)`. ([#13][github-13])
+### Fixed
+ - The `ProcessCollector` is now initialized on first use in a given process. This fixes a
+   bug where values cached during precompilation (e.g. system boot time) would be used
+   instead of the current values. ([#14][github-14])
 
 ## [1.2.0] - 2023-11-22
 ### Added
