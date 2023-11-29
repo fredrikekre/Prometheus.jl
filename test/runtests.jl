@@ -281,8 +281,8 @@ end
     # Prometheus.labels(...), Prometheus.remove(...), Prometheus.clear()
     l1 = ("/foo/", "200")
     l2 = ("/bar/", "404")
-    @test Prometheus.labels(c, l1) === Prometheus.labels(c, l1)
-    @test Prometheus.labels(c, l2) === Prometheus.labels(c, l2)
+    @test Prometheus.labels(c, l1) === Prometheus.labels(c, l1) === c[l1]
+    @test Prometheus.labels(c, l2) === Prometheus.labels(c, l2) === c[l2]
     @test length(c.children) == 2
     @test Prometheus.labels(c, l1).value == 0
     @test Prometheus.labels(c, l2).value == 0
@@ -449,8 +449,8 @@ end
     # Prometheus.inc(...)
     l1 = ("/foo/", "200")
     l2 = ("/bar/", "404")
-    @test Prometheus.labels(c, l1) === Prometheus.labels(c, l1)
-    @test Prometheus.labels(c, l2) === Prometheus.labels(c, l2)
+    @test Prometheus.labels(c, l1) === Prometheus.labels(c, l1) === c[l1]
+    @test Prometheus.labels(c, l2) === Prometheus.labels(c, l2) === c[l2]
     @test length(c.children) == 2
     @test Prometheus.labels(c, l1)._count == 0
     @test Prometheus.labels(c, l1)._sum == 0
@@ -549,12 +549,19 @@ end
             ),
         )
         @test Prometheus.labels(fam, ("/api", "200")) ===
+              fam[("/api", "200")] ===
               Prometheus.labels(fam, ("/api", 200)) ===
+              fam[("/api", 200)] ===
               Prometheus.labels(fam, (target="/api", status_code="200")) ===
+              fam[(target="/api", status_code="200")] ===
               Prometheus.labels(fam, (target="/api", status_code=200)) ===
+              fam[(target="/api", status_code=200)] ===
               Prometheus.labels(fam, (status_code="200", target="/api")) ===
+              fam[(status_code="200", target="/api")] ===
               Prometheus.labels(fam, (status_code=200, target="/api")) ===
-              Prometheus.labels(fam, RequestLabels("/api", 200))
+              fam[(status_code=200, target="/api")] ===
+              Prometheus.labels(fam, RequestLabels("/api", 200)) ===
+              fam[RequestLabels("/api", 200)]
     end
 end
 
