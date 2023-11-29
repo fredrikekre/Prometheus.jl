@@ -4,53 +4,72 @@
 
 mutable struct ProcessCollector <: Collector
     @const pid::Function
-    @const system_boot_time::Int
-    @const clock_ticks_per_second::Int
-    @const pagesize::Int
+    @atomic initialized::Ptr{Nothing}
+    @atomic system_boot_time::Int
+    @atomic clock_ticks_per_second::Int
+    @atomic pagesize::Int
     function ProcessCollector(
             pid::Function = () -> "self";
             registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
         )
-        # Read boot time as a way to check if /proc is available and readable
-        system_boot_time = 0
-        try
-            proc_stat = read("/proc/stat", String)
-            m = match(r"^btime\s+(\d+)"m, proc_stat)::RegexMatch
-            system_boot_time = parse(Int, m.captures[1]::AbstractString)
-        catch e
-            @debug "ProcessCollector: /proc is not available or not readable, disabling." e
-        end
-        # Fetch clock ticks per second
-        clock_ticks_per_second = 0
-        try
-            cmd = pipeline(`getconf CLK_TCK`, stderr=devnull)
-            str = read(cmd, String)
-            clock_ticks_per_second = parse(Int, strip(str))
-        catch e
-            if system_boot_time > 0
-                @debug "ProcessCollector: /proc is available but could not read " *
-                       "CLK_TCK from getconf, partially disabling." e
-            end
-        end
-        # Fetch pagesize
-        pagesize = 0
-        try
-            cmd = pipeline(`getconf PAGESIZE`, stderr=devnull)
-            str = read(cmd, String)
-            pagesize = parse(Int, strip(str))
-        catch e
-            if system_boot_time > 0
-                @debug "ProcessCollector: /proc is available but could not read " *
-                       "PAGESIZE from getconf, partially disabling." e
-            end
-        end
-        # Create the collector
-        procc = new(pid, system_boot_time, clock_ticks_per_second, pagesize)
+        procc = new(pid, C_NULL, 0, 0, 0)
         if registry !== nothing
             register(registry, procc)
         end
         return procc
     end
+end
+
+# Initialize the ProcessCollector on first use in a given process. This is necessary because
+# typically collectors are defined as global variables which may have been cached during
+# precompilation. The struct field initialized::Ptr is used to detect this: if it is NULL,
+# then either the collector was constructed in this session (since it is set to null in the
+# inner constructor), or it was deserialized from a cache file (since pointers are zeroed in
+# the precompilation serialize/deserialize process). Important to note is that this property
+# holds even if the collector was initialized in the process that output the serialized
+# file. This would not be hold for e.g. a initialized::Bool field.
+function initialize_process_collector(procc::ProcessCollector)
+    if procc.initialized !== C_NULL
+        return
+    end
+    system_boot_time = 0
+    try
+        proc_stat = read("/proc/stat", String)
+        m = match(r"^btime\s+(\d+)"m, proc_stat)::RegexMatch
+        system_boot_time = parse(Int, m.captures[1]::AbstractString)
+    catch e
+        @debug "ProcessCollector: /proc is not available or not readable, disabling." e
+    end
+    # Fetch clock ticks per second
+    clock_ticks_per_second = 0
+    try
+        cmd = pipeline(`getconf CLK_TCK`, stderr=devnull)
+        str = read(cmd, String)
+        clock_ticks_per_second = parse(Int, strip(str))
+    catch e
+        if system_boot_time > 0
+            @debug "ProcessCollector: /proc is available but could not read " *
+                   "CLK_TCK from getconf, partially disabling." e
+        end
+    end
+    # Fetch pagesize
+    pagesize = 0
+    try
+        cmd = pipeline(`getconf PAGESIZE`, stderr=devnull)
+        str = read(cmd, String)
+        pagesize = parse(Int, strip(str))
+    catch e
+        if system_boot_time > 0
+            @debug "ProcessCollector: /proc is available but could not read " *
+                   "PAGESIZE from getconf, partially disabling." e
+        end
+    end
+    # Set the values and return
+    @atomic procc.system_boot_time = system_boot_time
+    @atomic procc.clock_ticks_per_second = clock_ticks_per_second
+    @atomic procc.pagesize = pagesize
+    @atomic procc.initialized = Ptr{Nothing}(0xdeadbeef % UInt)
+    return
 end
 
 """
@@ -92,7 +111,14 @@ function metric_names(::ProcessCollector)
 end
 
 function collect!(metrics::Vector, procc::ProcessCollector)
-    # If we could not read /proc just return early
+    initialize_process_collector(procc)
+    @assert procc.initialized !== C_NULL
+    # Unpack variables
+    system_boot_time = procc.system_boot_time
+    clock_ticks_per_second = procc.clock_ticks_per_second
+    pagesize = procc.pagesize
+    # If reading the system boot time from /proc/stat failed then that is used as an
+    # indicator for a missing or unreadable /proc fs so then return early
     procc.system_boot_time == 0 && return metrics
     # Fetch the pid
     pid = try
@@ -115,9 +141,9 @@ function collect!(metrics::Vector, procc::ProcessCollector)
     if proc_stat !== nothing
         fields = split(split(proc_stat, ')')[end]) # This strips off the first two fields
         # CPU time and start time requires clock_ticks_per_second
-        if procc.clock_ticks_per_second > 0
-            utime = parse(Int, fields[14 - 2]) / procc.clock_ticks_per_second
-            stime = parse(Int, fields[15 - 2]) / procc.clock_ticks_per_second
+        if clock_ticks_per_second > 0
+            utime = parse(Int, fields[14 - 2]) / clock_ticks_per_second
+            stime = parse(Int, fields[15 - 2]) / clock_ticks_per_second
             label_names = LabelNames(("mode",))
             proc_cpu_seconds = Metric(
                 "counter", "process_cpu_seconds_total",
@@ -129,11 +155,11 @@ function collect!(metrics::Vector, procc::ProcessCollector)
             )
             push!(metrics, proc_cpu_seconds)
             # Process start time
-            starttime = parse(Int, fields[22 - 2]) / procc.clock_ticks_per_second
+            starttime = parse(Int, fields[22 - 2]) / clock_ticks_per_second
             proc_start_time = Metric(
                 "gauge", "process_start_time_seconds",
                 "Start time since unix epoch in seconds.",
-                Sample(nothing, nothing, nothing, starttime + procc.system_boot_time),
+                Sample(nothing, nothing, nothing, starttime + system_boot_time),
             )
             push!(metrics, proc_start_time)
         end
@@ -144,13 +170,13 @@ function collect!(metrics::Vector, procc::ProcessCollector)
             Sample(nothing, nothing, nothing, vsize),
         )
         push!(metrics, proc_virtual_memory)
-        if procc.pagesize > 0
+        if pagesize > 0
             # Resident memory
             rss = parse(Int, fields[24 - 2])
             proc_resident_memory = Metric(
                 "gauge", "process_resident_memory_bytes",
                 "Resident memory size (RSS) in bytes.",
-                Sample(nothing, nothing, nothing, rss * procc.pagesize),
+                Sample(nothing, nothing, nothing, rss * pagesize),
             )
             push!(metrics, proc_resident_memory)
         end
