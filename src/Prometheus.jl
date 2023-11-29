@@ -821,6 +821,11 @@ the following:
 
 All non-string values (e.g. `200` in the examples above) are stringified using `string`.
 
+!!! tip
+    `Base.getindex` is overloaded to have the meaning of `Prometheus.labels` for the family
+    collector: `family[label_values]` is equivalent to
+    `Prometheus.labels(family, label_values)`.
+
 !!! note
     This method does an acquire/release of a lock, and a dictionary lookup, to find the
     collector matching the label names. For typical applications this overhead does not
@@ -833,6 +838,11 @@ function labels(family::Family{C, N}, label_values) where {C, N}
         family.constructor()::C
     end
     return collector
+end
+
+# Support family[labels] as a cute way of extracting the collector
+function Base.getindex(family::Family, label_values)
+    return labels(family, label_values)
 end
 
 """
