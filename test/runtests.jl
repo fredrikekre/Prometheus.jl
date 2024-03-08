@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 using HTTP: HTTP
 using Prometheus: Prometheus
 using Test: @test, @test_logs, @test_throws, @testset

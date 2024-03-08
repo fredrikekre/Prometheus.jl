@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+
 module Prometheus
 
 using CodecZlib: GzipCompressorStream
