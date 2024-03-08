@@ -86,7 +86,7 @@ documentation](https://prometheus.io/docs/concepts/metric_types/#counter):
 
 ```@docs
 Prometheus.Counter(::String, ::String; kwargs...)
-Prometheus.inc(::Prometheus.Counter, ::Any)
+Prometheus.inc(::Prometheus.Counter, ::Real)
 ```
 
 ### Gauge
@@ -103,9 +103,9 @@ documentation](https://prometheus.io/docs/concepts/metric_types/#gauge):
 
 ```@docs
 Prometheus.Gauge(::String, ::String; kwargs...)
-Prometheus.inc(::Prometheus.Gauge, ::Any)
-Prometheus.dec(::Prometheus.Gauge, ::Any)
-Prometheus.set(::Prometheus.Gauge, ::Any)
+Prometheus.inc(::Prometheus.Gauge, ::Real)
+Prometheus.dec(::Prometheus.Gauge, ::Real)
+Prometheus.set(::Prometheus.Gauge, ::Real)
 Prometheus.set_to_current_time(::Prometheus.Gauge)
 Prometheus.@time
 Prometheus.@inprogress
@@ -122,7 +122,7 @@ documentation](https://prometheus.io/docs/concepts/metric_types/#histogram):
 
 ```@docs
 Prometheus.Histogram(::String, ::String; kwargs...)
-Prometheus.observe(::Prometheus.Histogram, ::Any)
+Prometheus.observe(::Prometheus.Histogram, ::Real)
 ```
 ```@docs; canonical=false
 Prometheus.@time
@@ -141,7 +141,7 @@ documentation](https://prometheus.io/docs/concepts/metric_types/#summary):
 
 ```@docs
 Prometheus.Summary(::String, ::String; kwargs...)
-Prometheus.observe(::Prometheus.Summary, ::Any)
+Prometheus.observe(::Prometheus.Summary, ::Real)
 ```
 ```@docs; canonical=false
 Prometheus.@time

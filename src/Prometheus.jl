@@ -243,7 +243,7 @@ Construct a Gauge collector.
    skip registration.
 
 **Methods**
- - [`Prometheus.inc`](@ref inc(::Gauge, ::Any)): increment the value
+ - [`Prometheus.inc`](@ref inc(::Gauge, ::Real)): increment the value
    of the gauge.
  - [`Prometheus.dec`](@ref): decrement the value of the gauge.
  - [`Prometheus.set`](@ref): set the value of the gauge.
@@ -467,7 +467,7 @@ Construct a Summary collector.
    skip registration.
 
 **Methods**
- - [`Prometheus.observe`](@ref observe(::Summary, ::Any)): add an observation to the
+ - [`Prometheus.observe`](@ref observe(::Summary, ::Real)): add an observation to the
    summary.
  - [`Prometheus.@time`](@ref): time a section and add the elapsed time as an observation.
 """
