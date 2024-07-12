@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.0] - 2024-07-12
+### Changed
+ - The public API of Prometheus.jl is now marked `public` in Julia versions that support it.
+   The public names are: `CollectorRegistry`, `register`, `unregister`, `Counter`, `Gauge`,
+   `Histogram`, `Summary`, `GCCollector`, `ProcessCollector`, `inc`, `dec`, `set`,
+   `set_to_current_time`, `observe`, `@inprogress`, `@time`, `Family`, `labels`, `remove`,
+   `clear`, and `expose`. ([#19])
+
 ## [v1.3.0] - 2023-11-29
 ### Added
  - `Base.getindex` is overloaded for the `Prometheus.Family` collector to have the same

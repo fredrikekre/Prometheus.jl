@@ -6,6 +6,17 @@ using CodecZlib: GzipCompressorStream
 using HTTP: HTTP
 using SimpleBufferStream: BufferStream
 
+if VERSION >= v"1.11.0-DEV.469"
+    eval(Meta.parse("""
+        public CollectorRegistry, register, unregister,
+            Counter, Gauge, Histogram, Summary, GCCollector, ProcessCollector,
+            inc, dec, set, set_to_current_time, observe, @inprogress, @time,
+            Family, labels, remove, clear,
+            expose
+    """
+    ))
+end
+
 abstract type Collector end
 
 #########
