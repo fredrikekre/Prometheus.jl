@@ -7,14 +7,15 @@ using HTTP: HTTP
 using SimpleBufferStream: BufferStream
 
 if VERSION >= v"1.11.0-DEV.469"
-    eval(Meta.parse("""
+    let str = """
         public CollectorRegistry, register, unregister,
             Counter, Gauge, Histogram, Summary, GCCollector, ProcessCollector,
             inc, dec, set, set_to_current_time, observe, @inprogress, @time,
             Family, labels, remove, clear,
             expose
-    """
-    ))
+        """
+        eval(Meta.parse(str))
+    end
 end
 
 abstract type Collector end
@@ -30,6 +31,7 @@ struct ArgumentError <: PrometheusException
 end
 function Base.showerror(io::IO, err::ArgumentError)
     print(io, "Prometheus.", nameof(typeof(err)), ": ", err.msg)
+    return
 end
 
 struct AssertionError <: PrometheusException
@@ -44,8 +46,9 @@ function Base.showerror(io::IO, err::AssertionError)
     print(
         io,
         "Prometheus.AssertionError: `", err.msg, "`. This is unexpected, please file an " *
-        "issue at https://github.com/fredrikekre/Prometheus.jl/issues/new.",
+            "issue at https://github.com/fredrikekre/Prometheus.jl/issues/new.",
     )
+    return
 end
 
 # https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels
@@ -115,9 +118,7 @@ function register(reg::CollectorRegistry, collector::Collector)
         end
         for metric_name in metric_names(collector)
             if metric_name in existing_names
-                throw(ArgumentError(
-                    "collector already contains a metric with the name \"$(metric_name)\""
-                ))
+                throw(ArgumentError("collector already contains a metric with the name \"$(metric_name)\""))
             end
         end
         push!(reg.collectors, collector)
@@ -156,7 +157,7 @@ mutable struct Counter <: Collector
 
     function Counter(
             metric_name::String, help::String;
-            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
+            registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         initial_value = 0.0
         counter = new(verify_metric_name(metric_name), help, initial_value)
@@ -187,7 +188,7 @@ Construct a Counter collector.
 Counter(::String, ::String; kwargs...)
 
 function metric_names(counter::Counter)
-    return (counter.metric_name, )
+    return (counter.metric_name,)
 end
 
 """
@@ -199,21 +200,18 @@ Throw a `Prometheus.ArgumentError` if `v < 0` (a counter must not decrease).
 """
 function inc(counter::Counter, v::Real = 1.0)
     if v < 0
-        throw(ArgumentError(
-            "invalid value $v: a counter must not decrease"
-        ))
+        throw(ArgumentError("invalid value $v: a counter must not decrease"))
     end
     @atomic counter.value += convert(Float64, v)
     return nothing
 end
 
 function collect!(metrics::Vector, counter::Counter)
-    push!(metrics,
-        Metric(
-            "counter", counter.metric_name, counter.help,
-            Sample(nothing, nothing, nothing, @atomic(counter.value)),
-        ),
+    metric = Metric(
+        "counter", counter.metric_name, counter.help,
+        Sample(nothing, nothing, nothing, @atomic(counter.value))
     )
+    push!(metrics, metric)
     return metrics
 end
 
@@ -230,7 +228,7 @@ mutable struct Gauge <: Collector
 
     function Gauge(
             metric_name::String, help::String;
-            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
+            registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         initial_value = 0.0
         gauge = new(verify_metric_name(metric_name), help, initial_value)
@@ -270,7 +268,7 @@ Construct a Gauge collector.
 Gauge(::String, ::String; kwargs...)
 
 function metric_names(gauge::Gauge)
-    return (gauge.metric_name, )
+    return (gauge.metric_name,)
 end
 
 """
@@ -316,12 +314,11 @@ function set_to_current_time(gauge::Gauge)
 end
 
 function collect!(metrics::Vector, gauge::Gauge)
-    push!(metrics,
-        Metric(
-            "gauge", gauge.metric_name, gauge.help,
-            Sample(nothing, nothing, nothing, @atomic(gauge.value)),
-        ),
+    metric = Metric(
+        "gauge", gauge.metric_name, gauge.help,
+        Sample(nothing, nothing, nothing, @atomic(gauge.value)),
     )
+    push!(metrics, metric)
     return metrics
 end
 
@@ -334,7 +331,7 @@ end
 # A histogram SHOULD have the same default buckets as other client libraries.
 # https://github.com/prometheus/client_python/blob/d8306b7b39ed814f3ec667a7901df249cee8a956/prometheus_client/metrics.py#L565
 const DEFAULT_BUCKETS = [
-    .005, .01, .025, .05, .075, .1, .25, .5, .75, 1.0, 2.5, 5.0, 7.5, 10.0, Inf,
+    0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0, Inf,
 ]
 
 mutable struct Histogram <: Collector
@@ -346,8 +343,8 @@ mutable struct Histogram <: Collector
     @const bucket_counters::Vector{Threads.Atomic{Int}}
 
     function Histogram(
-            metric_name::String, help::String; buckets::Vector{Float64}=DEFAULT_BUCKETS,
-            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
+            metric_name::String, help::String; buckets::Vector{Float64} = DEFAULT_BUCKETS,
+            registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         # Make a copy of and verify buckets
         buckets = copy(buckets)
@@ -420,22 +417,18 @@ end
 
 function collect!(metrics::Vector, histogram::Histogram)
     label_names = LabelNames(("le",))
-    push!(metrics,
-        Metric(
-            "histogram", histogram.metric_name, histogram.help,
-            [
-                Sample("_count", nothing, nothing, @atomic(histogram._count)),
-                Sample("_sum", nothing, nothing, @atomic(histogram._sum)),
-                (
-                    Sample(
-                        nothing, label_names,
-                        make_label_values(label_names, (histogram.buckets[i],)),
-                        histogram.bucket_counters[i][],
-                    ) for i in 1:length(histogram.buckets)
-               )...,
-            ]
-        ),
-    )
+    samples = Vector{Sample}(undef, 2 + length(histogram.buckets))
+    samples[1] = Sample("_count", nothing, nothing, @atomic(histogram._count))
+    samples[2] = Sample("_sum", nothing, nothing, @atomic(histogram._sum))
+    for i in 1:length(histogram.buckets)
+        sample = Sample(
+            nothing, label_names, make_label_values(label_names, (histogram.buckets[i],)),
+            histogram.bucket_counters[i][],
+        )
+        samples[2 + i] = sample
+    end
+    metric = Metric("histogram", histogram.metric_name, histogram.help, samples)
+    push!(metrics, metric)
     return metrics
 end
 
@@ -453,7 +446,7 @@ mutable struct Summary <: Collector
 
     function Summary(
             metric_name::String, help::String;
-            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
+            registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         initial_count = 0
         initial_sum = 0.0
@@ -503,15 +496,14 @@ function observe(summary::Summary, v::Real)
 end
 
 function collect!(metrics::Vector, summary::Summary)
-    push!(metrics,
-        Metric(
-            "summary", summary.metric_name, summary.help,
-            [
-                Sample("_count", nothing, nothing, @atomic(summary._count)),
-                Sample("_sum", nothing, nothing, @atomic(summary._sum)),
-            ]
-        ),
+    metric = Metric(
+        "summary", summary.metric_name, summary.help,
+        [
+            Sample("_count", nothing, nothing, @atomic(summary._count)),
+            Sample("_sum", nothing, nothing, @atomic(summary._sum)),
+        ]
     )
+    push!(metrics, metric)
     return metrics
 end
 
@@ -600,7 +592,7 @@ function expr_gen(macroname, collector, code)
         ]
         postamble = Expr[
             Expr(:(=), val, Expr(:call, max, Expr(:call, -, Expr(:call, time), t0), 0.0)),
-            Expr(:call, at_time, cllctr, val)
+            Expr(:call, at_time, cllctr, val),
         ]
     elseif macroname === :inprogress
         local cllctr
@@ -610,7 +602,7 @@ function expr_gen(macroname, collector, code)
             Expr(:call, at_inprogress_enter, cllctr),
         ]
         postamble = Expr[
-            Expr(:call, at_inprogress_exit, cllctr)
+            Expr(:call, at_inprogress_exit, cllctr),
         ]
     else
         throw(ArgumentError("unknown macro name $(repr(macroname))"))
@@ -630,7 +622,7 @@ function expr_gen(macroname, collector, code)
                 Expr(
                     :tryfinally,
                     Expr(:(=), ret, fbody),
-                    Expr(:block, postamble...,),
+                    Expr(:block, postamble...),
                 ),
                 ret,
             ),
@@ -642,7 +634,7 @@ function expr_gen(macroname, collector, code)
             Expr(
                 :tryfinally,
                 Expr(:(=), ret, esc(code)),
-                Expr(:block, postamble...,),
+                Expr(:block, postamble...),
             ),
             ret,
         )
@@ -668,7 +660,7 @@ end
 
 struct LabelNames{N}
     label_names::NTuple{N, Symbol}
-    function LabelNames(label_names::NTuple{N, Symbol}) where N
+    function LabelNames(label_names::NTuple{N, Symbol}) where {N}
         for label_name in label_names
             verify_label_name(String(label_name))
         end
@@ -677,12 +669,12 @@ struct LabelNames{N}
 end
 
 # Tuple of strings
-function LabelNames(label_names::NTuple{N, String}) where N
+function LabelNames(label_names::NTuple{N, String}) where {N}
     return LabelNames(map(Symbol, label_names))
 end
 
 # NamedTuple-type or a (user defined) struct
-function LabelNames(::Type{T}) where T
+function LabelNames(::Type{T}) where {T}
     return LabelNames(fieldnames(T))
 end
 
@@ -690,7 +682,7 @@ struct LabelValues{N}
     label_values::NTuple{N, String}
 end
 
-function make_label_values(::LabelNames{N}, label_values::NTuple{N, String}) where N
+function make_label_values(::LabelNames{N}, label_values::NTuple{N, String}) where {N}
     return LabelValues(label_values)
 end
 
@@ -698,12 +690,12 @@ stringify(str::String) = str
 stringify(str) = String(string(str))::String
 
 # Heterogeneous tuple
-function make_label_values(::LabelNames{N}, label_values::Tuple{Vararg{Any, N}}) where N
+function make_label_values(::LabelNames{N}, label_values::Tuple{Vararg{Any, N}}) where {N}
     return LabelValues(map(stringify, label_values)::NTuple{N, String})
 end
 
 # NamedTuple or a (user defined) struct
-function make_label_values(label_names::LabelNames{N}, label_values) where N
+function make_label_values(label_names::LabelNames{N}, label_values) where {N}
     t::NTuple{N, String} = ntuple(N) do i
         stringify(getfield(label_values, label_names.label_names[i]))::String
     end
@@ -732,10 +724,10 @@ struct Family{C, N, F} <: Collector
 
     function Family{C}(
             metric_name::String, help::String, args_first, args_tail...;
-            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY, kwargs...,
+            registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY, kwargs...,
         ) where {C}
         # Support ... on non-final argument
-        args_all = (args_first, args_tail...,)
+        args_all = (args_first, args_tail...)
         label_names = last(args_all)
         args = Base.front(args_all)
         @assert(isempty(args))
@@ -743,7 +735,7 @@ struct Family{C, N, F} <: Collector
         # make_constructor(::Type{Collector}, metric_name, help, args...; kwargs...)
         # so that some Collectors (like Counter) can skip the closure over args and kwargs.
         function constructor()
-            return C(metric_name, help, args...; kwargs..., registry=nothing)::C
+            return C(metric_name, help, args...; kwargs..., registry = nothing)::C
         end
         labels = LabelNames(label_names)
         N = length(labels.label_names)
@@ -810,10 +802,10 @@ counter_family = Prometheus.Family{Counter}(
 Prometheus.inc(Prometheus.labels(counter_family, (target="/api", status_code=200)))
 ```
 """
-Family{C}(::String, ::String, ::Any; kwargs...) where C
+Family{C}(::String, ::String, ::Any; kwargs...) where {C}
 
 function metric_names(family::Family)
-    return (family.metric_name, )
+    return (family.metric_name,)
 end
 
 """
@@ -870,7 +862,7 @@ Refer to [`Prometheus.labels`](@ref) for how to specify `label_values`.
 !!! note
     This method invalidates cached collectors for the label names.
 """
-function remove(family::Family{<:Any, N}, label_values) where N
+function remove(family::Family{<:Any, N}, label_values) where {N}
     labels = make_label_values(family.label_names, label_values)::LabelValues{N}
     @lock family.lock delete!(family.children, labels)
     return
@@ -895,7 +887,7 @@ prometheus_type(::Type{Gauge}) = "gauge"
 prometheus_type(::Type{Histogram}) = "histogram"
 prometheus_type(::Type{Summary}) = "summary"
 
-function collect!(metrics::Vector, family::Family{C}) where C
+function collect!(metrics::Vector, family::Family{C}) where {C}
     type = prometheus_type(C)
     samples = Sample[]
     buf = Metric[]
@@ -919,22 +911,16 @@ function collect!(metrics::Vector, family::Family{C}) where C
                         # collectors for now.
                         @assert(
                             length(child_sample.label_names.label_names) ==
-                            length(child_sample.label_values.label_values)
+                                length(child_sample.label_values.label_values)
                         )
                         # TODO: Bypass constructor verifications
-                        merged_names = LabelNames((
-                            label_names.label_names...,
-                            child_sample.label_names.label_names...,
-                        ))
-                        merged_values = LabelValues((
-                            label_values.label_values...,
-                            child_sample.label_values.label_values...,
-                        ))
+                        merged_names = LabelNames((label_names.label_names..., child_sample.label_names.label_names...))
+                        merged_values = LabelValues((label_values.label_values..., child_sample.label_values.label_values...))
                         push!(samples, Sample(child_sample.suffix, merged_names, merged_values, child_sample.value))
                     else
                         @assert(
-                            (child_sample.label_names  === nothing) ===
-                            (child_sample.label_values === nothing)
+                            (child_sample.label_names === nothing) ===
+                                (child_sample.label_values === nothing)
                         )
                         push!(samples, Sample(child_sample.suffix, label_names, label_values, child_sample.value))
                     end
@@ -943,11 +929,13 @@ function collect!(metrics::Vector, family::Family{C}) where C
         end
     end
     # Sort samples lexicographically by the labels
-    sort!(samples; by = function(x)
-        labels = x.label_values
-        @assert(labels !== nothing)
-        return labels.label_values
-    end)
+    sort!(
+        samples; by = function(x)
+            labels = x.label_values
+            @assert(labels !== nothing)
+            return labels.label_values
+        end
+    )
     push!(
         metrics,
         Metric(type, family.metric_name, family.help, samples),
@@ -970,7 +958,7 @@ struct Sample
             label_names::Union{Nothing, LabelNames{N}},
             label_values::Union{Nothing, LabelValues{N}},
             value::Real,
-        ) where N
+        ) where {N}
         @assert((label_names === nothing) === (label_values === nothing))
         return new(suffix, label_names, label_values, value)
     end
@@ -1038,6 +1026,7 @@ function expose_metric(io::IO, metric::Metric)
             println(io, " ", isinteger(sample.value) ? Int(sample.value) : sample.value)
         end
     end
+    return
 end
 
 """
@@ -1051,7 +1040,7 @@ function expose(path::String, reg::CollectorRegistry = DEFAULT_REGISTRY)
     mktemp(dirname(path)) do tmp_path, tmp_io
         expose_io(tmp_io, reg)
         close(tmp_io)
-        mv(tmp_path, path; force=true)
+        mv(tmp_path, path; force = true)
     end
     return
 end
@@ -1075,7 +1064,7 @@ function expose_io(io::IO, reg::CollectorRegistry)
     end
     sort!(metrics; by = metric -> metric.metric_name)
     # Write to IO
-    buf = IOBuffer(; maxsize=1024^2) # 1 MB
+    buf = IOBuffer(; maxsize = 1024^2) # 1 MB
     for metric in metrics
         truncate(buf, 0)
         expose_metric(buf, metric)
@@ -1109,7 +1098,7 @@ Export all metrics in `reg` by writing them to the HTTP stream `http`.
 The caller is responsible for checking e.g. the HTTP method and URI target. For
 HEAD requests this method do not write a body, however.
 """
-function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; compress::Bool=true)
+function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; compress::Bool = true)
     # TODO: Handle Accept request header for different formats?
     # Compress by default if client supports it and user haven't disabled it
     if compress
@@ -1149,7 +1138,7 @@ include("process_collector.jl")
 
 # Default registry and collectors
 const DEFAULT_REGISTRY = CollectorRegistry()
-const GC_COLLECTOR = GCCollector(; registry=DEFAULT_REGISTRY)
-const PROCESS_COLLECTOR = ProcessCollector(; registry=DEFAULT_REGISTRY)
+const GC_COLLECTOR = GCCollector(; registry = DEFAULT_REGISTRY)
+const PROCESS_COLLECTOR = ProcessCollector(; registry = DEFAULT_REGISTRY)
 
 end # module Prometheus

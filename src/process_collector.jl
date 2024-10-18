@@ -12,7 +12,7 @@ mutable struct ProcessCollector <: Collector
     @atomic pagesize::Int
     function ProcessCollector(
             pid::Function = () -> "self";
-            registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY,
+            registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         procc = new(pid, C_NULL, 0, 0, 0)
         if registry !== nothing
@@ -45,25 +45,25 @@ function initialize_process_collector(procc::ProcessCollector)
     # Fetch clock ticks per second
     clock_ticks_per_second = 0
     try
-        cmd = pipeline(`getconf CLK_TCK`, stderr=devnull)
+        cmd = pipeline(`getconf CLK_TCK`, stderr = devnull)
         str = read(cmd, String)
         clock_ticks_per_second = parse(Int, strip(str))
     catch e
         if system_boot_time > 0
             @debug "ProcessCollector: /proc is available but could not read " *
-                   "CLK_TCK from getconf, partially disabling." e
+                "CLK_TCK from getconf, partially disabling." e
         end
     end
     # Fetch pagesize
     pagesize = 0
     try
-        cmd = pipeline(`getconf PAGESIZE`, stderr=devnull)
+        cmd = pipeline(`getconf PAGESIZE`, stderr = devnull)
         str = read(cmd, String)
         pagesize = parse(Int, strip(str))
     catch e
         if system_boot_time > 0
             @debug "ProcessCollector: /proc is available but could not read " *
-                   "PAGESIZE from getconf, partially disabling." e
+                "PAGESIZE from getconf, partially disabling." e
         end
     end
     # Set the values and return
@@ -108,7 +108,7 @@ function metric_names(::ProcessCollector)
         "process_virtual_memory_bytes", "process_resident_memory_bytes", "process_open_fds",
         "process_io_rchar_bytes_total", "process_io_wchar_bytes_total",
         "process_io_syscr_total", "process_io_syscw_total", "process_io_read_bytes_total",
-        "process_io_write_bytes_total"
+        "process_io_write_bytes_total",
     )
 end
 
@@ -124,7 +124,7 @@ function collect!(metrics::Vector, procc::ProcessCollector)
     procc.system_boot_time == 0 && return metrics
     # Fetch the pid
     pid = try
-        String(strip(string(procc.pid()::Union{AbstractString,Integer})))::String
+        String(strip(string(procc.pid()::Union{AbstractString, Integer})))::String
     catch e
         @error "ProcessCollector: could not look up the pid from the lambda" e
         return metrics

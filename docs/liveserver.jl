@@ -22,4 +22,3 @@ LiveServer.servedocs(;
         joinpath(repo_root, "src"),
     ],
 )
-
