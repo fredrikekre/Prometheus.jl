@@ -422,7 +422,7 @@ function collect!(metrics::Vector, histogram::Histogram)
     samples[2] = Sample("_sum", nothing, nothing, @atomic(histogram._sum))
     for i in 1:length(histogram.buckets)
         sample = Sample(
-            nothing, label_names, make_label_values(label_names, (histogram.buckets[i],)),
+            "_bucket", label_names, make_label_values(label_names, (histogram.buckets[i],)),
             histogram.bucket_counters[i][],
         )
         samples[2 + i] = sample

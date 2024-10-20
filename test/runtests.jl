@@ -220,7 +220,7 @@ end
     @test s1.value == 2
     @test s2.value == 0.5 + 1.6
     for (ub, counter, sample, known_count) in zip(c.buckets, c.bucket_counters, metric.samples[3:end], [1, 2, 2])
-        @test sample.suffix === nothing
+        @test sample.suffix == "_bucket"
         @test (sample.label_names::Prometheus.LabelNames{1}).label_names === (:le,)
         @test (sample.label_values::Prometheus.LabelValues{1}).label_values == (string(ub),)
         @test sample.value == counter[] == known_count
@@ -233,9 +233,9 @@ end
         # TYPE metric_name_histogram histogram
         metric_name_histogram_count 2
         metric_name_histogram_sum 2.1
-        metric_name_histogram{le="1.0"} 1
-        metric_name_histogram{le="2.0"} 2
-        metric_name_histogram{le="Inf"} 2
+        metric_name_histogram_bucket{le="1.0"} 1
+        metric_name_histogram_bucket{le="2.0"} 2
+        metric_name_histogram_bucket{le="Inf"} 2
         """
 end
 
@@ -491,7 +491,7 @@ end
         # {le} samples
         for (ls, subrange) in ((l1, 7:8), (l2, 3:4))
             for (ub, counter, sample) in zip(buckets, Prometheus.labels(c, ls).bucket_counters, metric.samples[subrange])
-                @test sample.suffix === nothing
+                @test sample.suffix == "_bucket"
                 @test (sample.label_names::Prometheus.LabelNames{3}).label_names ===
                     (:endpoint, :status_code, :le)
                 @test (sample.label_values::Prometheus.LabelValues{3}).label_values ==
