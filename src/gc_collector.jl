@@ -5,7 +5,7 @@
 ############################
 
 mutable struct GCCollector <: Collector
-    function GCCollector(; registry::Union{CollectorRegistry, Nothing}=DEFAULT_REGISTRY)
+    function GCCollector(; registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY)
         gcc = new()
         if registry !== nothing
             register(registry, gcc)
@@ -45,7 +45,8 @@ function collect!(metrics::Vector, ::GCCollector)
     gc_num = Base.gc_num()
     gc_live_bytes = Base.gc_live_bytes()
     # Push all the metrics
-    push!(metrics,
+    push!(
+        metrics,
         let label_names = LabelNames(("type",))
             Metric(
                 "counter", "julia_gc_alloc_total", "Total number of allocations (calls to malloc, realloc, etc)",

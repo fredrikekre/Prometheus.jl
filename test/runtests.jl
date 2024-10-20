@@ -19,11 +19,11 @@ using Test: @test, @test_logs, @test_throws, @testset
     @test c2 in Prometheus.DEFAULT_REGISTRY.collectors
     # Provided registry
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Counter("metric_name_counter", "A counter."; registry=r)
+    c = Prometheus.Counter("metric_name_counter", "A counter."; registry = r)
     @test c in r.collectors
     @test !(c in Prometheus.DEFAULT_REGISTRY.collectors)
     # No registry on construction, register after
-    c = Prometheus.Counter("metric_name_counter", "A counter."; registry=nothing)
+    c = Prometheus.Counter("metric_name_counter", "A counter."; registry = nothing)
     @test !(c in Prometheus.DEFAULT_REGISTRY.collectors)
     r = Prometheus.CollectorRegistry()
     Prometheus.register(r, c)
@@ -40,7 +40,7 @@ end
     c = Prometheus.Counter("metric_name_counter", "A counter.")
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Counter("metric_name_counter", "A counter."; registry=r)
+    c = Prometheus.Counter("metric_name_counter", "A counter."; registry = r)
     @test c in r.collectors
     @test c.value == 0
     @test_throws(
@@ -64,12 +64,12 @@ end
     @test metric.samples.value == c.value
     # Prometheus.expose_metric(...)
     @test sprint(Prometheus.expose_metric, metric) ==
-          sprint(Prometheus.expose_io, r) ==
-          """
-          # HELP metric_name_counter A counter.
-          # TYPE metric_name_counter counter
-          metric_name_counter 3
-          """
+        sprint(Prometheus.expose_io, r) ==
+        """
+        # HELP metric_name_counter A counter.
+        # TYPE metric_name_counter counter
+        metric_name_counter 3
+        """
 end
 
 @testset "Prometheus.Gauge" begin
@@ -78,7 +78,7 @@ end
     c = Prometheus.Gauge("metric_name_gauge", "A gauge.")
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Gauge("metric_name_gauge", "A gauge."; registry=r)
+    c = Prometheus.Gauge("metric_name_gauge", "A gauge."; registry = r)
     @test c in r.collectors
     @test c.value == 0
     @test_throws(
@@ -115,12 +115,12 @@ end
     @test metric.samples.value == c.value
     # Prometheus.expose_metric(...)
     @test sprint(Prometheus.expose_metric, metric) ==
-          sprint(Prometheus.expose_io, r) ==
-          """
-          # HELP metric_name_gauge A gauge.
-          # TYPE metric_name_gauge gauge
-          metric_name_gauge 42
-          """
+        sprint(Prometheus.expose_io, r) ==
+        """
+        # HELP metric_name_gauge A gauge.
+        # TYPE metric_name_gauge gauge
+        metric_name_gauge 42
+        """
 end
 
 @testset "Prometheus.Summary" begin
@@ -129,7 +129,7 @@ end
     c = Prometheus.Summary("metric_name_summary", "A summary.")
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Summary("metric_name_summary", "A summary."; registry=r)
+    c = Prometheus.Summary("metric_name_summary", "A summary."; registry = r)
     @test c in r.collectors
     @test c._count == 0
     @test c._sum == 0
@@ -160,13 +160,13 @@ end
     @test s2.value == 11
     # Prometheus.expose_metric(...)
     @test sprint(Prometheus.expose_metric, metric) ==
-          sprint(Prometheus.expose_io, r) ==
-          """
-          # HELP metric_name_summary A summary.
-          # TYPE metric_name_summary summary
-          metric_name_summary_count 2
-          metric_name_summary_sum 11
-          """
+        sprint(Prometheus.expose_io, r) ==
+        """
+        # HELP metric_name_summary A summary.
+        # TYPE metric_name_summary summary
+        metric_name_summary_count 2
+        metric_name_summary_sum 11
+        """
 end
 
 @testset "Prometheus.Histogram" begin
@@ -175,7 +175,7 @@ end
     c = Prometheus.Histogram("metric_name_histogram", "A histogram.")
     @test c in Prometheus.DEFAULT_REGISTRY.collectors
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.Histogram("metric_name_histogram", "A histogram."; registry=r)
+    c = Prometheus.Histogram("metric_name_histogram", "A histogram."; registry = r)
     @test c in r.collectors
     @test c.buckets == Prometheus.DEFAULT_BUCKETS
     @test c._count == 0
@@ -203,7 +203,7 @@ end
     # Prometheus.collect(...)
     r = Prometheus.CollectorRegistry()
     buckets = [1.0, 2.0, Inf]
-    c = Prometheus.Histogram("metric_name_histogram", "A histogram."; buckets=buckets, registry=r)
+    c = Prometheus.Histogram("metric_name_histogram", "A histogram."; buckets = buckets, registry = r)
     Prometheus.observe(c, 0.5)
     Prometheus.observe(c, 1.6)
     metrics = Prometheus.collect(c)
@@ -227,16 +227,16 @@ end
     end
     # Prometheus.expose_metric(...)
     @test sprint(Prometheus.expose_metric, metric) ==
-          sprint(Prometheus.expose_io, r) ==
-          """
-          # HELP metric_name_histogram A histogram.
-          # TYPE metric_name_histogram histogram
-          metric_name_histogram_count 2
-          metric_name_histogram_sum 2.1
-          metric_name_histogram{le="1.0"} 1
-          metric_name_histogram{le="2.0"} 2
-          metric_name_histogram{le="Inf"} 2
-          """
+        sprint(Prometheus.expose_io, r) ==
+        """
+        # HELP metric_name_histogram A histogram.
+        # TYPE metric_name_histogram histogram
+        metric_name_histogram_count 2
+        metric_name_histogram_sum 2.1
+        metric_name_histogram{le="1.0"} 1
+        metric_name_histogram{le="2.0"} 2
+        metric_name_histogram{le="Inf"} 2
+        """
 end
 
 @testset "Prometheus.LabelNames and Prometheus.LabelValues" begin
@@ -316,17 +316,17 @@ end
     # Prometheus.expose_metric(...)
     type = Collector === Prometheus.Counter ? "counter" : "gauge"
     @test sprint(Prometheus.expose_metric, metric) ==
-          sprint(Prometheus.expose_io, r) ==
-          """
-          # HELP http_requests Number of HTTP requests.
-          # TYPE http_requests $(type)
-          http_requests{endpoint="/bar/",status_code="404"} 3
-          http_requests{endpoint="/foo/",status_code="200"} 3
-          """
+        sprint(Prometheus.expose_io, r) ==
+        """
+        # HELP http_requests Number of HTTP requests.
+        # TYPE http_requests $(type)
+        http_requests{endpoint="/bar/",status_code="404"} 3
+        http_requests{endpoint="/foo/",status_code="200"} 3
+        """
 end
 
 @testset "Prometheus.@time gauge::Gauge" begin
-    gauge = Prometheus.Gauge("call_time_last", "Time of last call"; registry=nothing)
+    gauge = Prometheus.Gauge("call_time_last", "Time of last call"; registry = nothing)
     Prometheus.@time gauge sleep(0.1)
     @test 0.3 > gauge.value > 0.1
     Prometheus.@time gauge let
@@ -354,19 +354,19 @@ end
     buckets = [1.0, Inf]
     collector = Collector(
         "call_time", "Time of calls";
-        (ishist ? (; buckets=buckets) : (;))...,
-        registry=nothing,
+        (ishist ? (; buckets = buckets) : (;))...,
+        registry = nothing,
     )
     Prometheus.@time collector sleep(0.1)
     @test 0.3 > collector._sum > 0.1
     @test collector._count == 1
-    ishist && @test (x->x[]).(collector.bucket_counters) == [1, 1]
+    ishist && @test (x -> x[]).(collector.bucket_counters) == [1, 1]
     Prometheus.@time collector let
         sleep(0.1)
     end
     @test 0.4 > collector._sum > 0.2
     @test collector._count == 2
-    ishist && @test (x->x[]).(collector.bucket_counters) == [2, 2]
+    ishist && @test (x -> x[]).(collector.bucket_counters) == [2, 2]
     Prometheus.@time collector f() = sleep(0.1)
     @sync begin
         @async f()
@@ -374,7 +374,7 @@ end
     end
     @test 0.7 > collector._sum > 0.4
     @test collector._count == 4
-    ishist && @test (x->x[]).(collector.bucket_counters) == [4, 4]
+    ishist && @test (x -> x[]).(collector.bucket_counters) == [4, 4]
     Prometheus.@time collector function g()
         sleep(0.1)
     end
@@ -384,15 +384,15 @@ end
     end
     @test 0.9 > collector._sum > 0.6
     @test collector._count == 6
-    ishist && @test (x->x[]).(collector.bucket_counters) == [6, 6]
+    ishist && @test (x -> x[]).(collector.bucket_counters) == [6, 6]
     if ishist
         Prometheus.@time collector sleep(1.1)
-        @test (x->x[]).(collector.bucket_counters) == [6, 7]
+        @test (x -> x[]).(collector.bucket_counters) == [6, 7]
     end
 end
 
 @testset "Prometheus.@inprogress gauge::Gauge" begin
-    gauge = Prometheus.Gauge("calls_inprogres", "Number of calls in progress"; registry=nothing)
+    gauge = Prometheus.Gauge("calls_inprogres", "Number of calls in progress"; registry = nothing)
     Prometheus.@inprogress gauge sleep(0.01)
     @test gauge.value == 0.0
     Prometheus.@inprogress gauge let
@@ -493,9 +493,9 @@ end
             for (ub, counter, sample) in zip(buckets, Prometheus.labels(c, ls).bucket_counters, metric.samples[subrange])
                 @test sample.suffix === nothing
                 @test (sample.label_names::Prometheus.LabelNames{3}).label_names ===
-                      (:endpoint, :status_code, :le)
+                    (:endpoint, :status_code, :le)
                 @test (sample.label_values::Prometheus.LabelValues{3}).label_values ==
-                      (ls..., string(ub))
+                    (ls..., string(ub))
                 @test sample.value == counter[]
             end
         end
@@ -510,15 +510,15 @@ end
         @test s4.value == 4.6 # _sum
         # Prometheus.expose_metric(...)
         @test sprint(Prometheus.expose_metric, metric) ==
-              sprint(Prometheus.expose_io, r) ==
-              """
-              # HELP http_request_time Time to process requests.
-              # TYPE http_request_time summary
-              http_request_time_count{endpoint="/bar/",status_code="404"} 2
-              http_request_time_sum{endpoint="/bar/",status_code="404"} 6.4
-              http_request_time_count{endpoint="/foo/",status_code="200"} 2
-              http_request_time_sum{endpoint="/foo/",status_code="200"} 4.6
-              """
+            sprint(Prometheus.expose_io, r) ==
+            """
+            # HELP http_request_time Time to process requests.
+            # TYPE http_request_time summary
+            http_request_time_count{endpoint="/bar/",status_code="404"} 2
+            http_request_time_sum{endpoint="/bar/",status_code="404"} 6.4
+            http_request_time_count{endpoint="/foo/",status_code="200"} 2
+            http_request_time_sum{endpoint="/foo/",status_code="200"} 4.6
+            """
     end
 end
 
@@ -531,45 +531,45 @@ end
             # Constructor with NTuple{N, String} names
             Prometheus.Family{Prometheus.Counter}(
                 "http_requests", "Total number of HTTP requests", ("target", "status_code");
-                registry=nothing,
+                registry = nothing,
             ),
             # Constructor with NTuple{N, Symbol} names
             Prometheus.Family{Prometheus.Counter}(
                 "http_requests", "Total number of HTTP requests", (:target, :status_code);
-                registry=nothing,
+                registry = nothing,
             ),
             # Constructor with NamedTuple type
             Prometheus.Family{Prometheus.Counter}(
                 "http_requests", "Total number of HTTP requests",
                 @NamedTuple{target::String, status_code::Int};
-                registry=nothing,
+                registry = nothing,
             ),
             # Constructor with custom struct
             Prometheus.Family{Prometheus.Counter}(
                 "http_requests", "Total number of HTTP requests", RequestLabels;
-                registry=nothing,
+                registry = nothing,
             ),
         )
         @test Prometheus.labels(fam, ("/api", "200")) ===
-              fam[("/api", "200")] ===
-              Prometheus.labels(fam, ("/api", 200)) ===
-              fam[("/api", 200)] ===
-              Prometheus.labels(fam, (target="/api", status_code="200")) ===
-              fam[(target="/api", status_code="200")] ===
-              Prometheus.labels(fam, (target="/api", status_code=200)) ===
-              fam[(target="/api", status_code=200)] ===
-              Prometheus.labels(fam, (status_code="200", target="/api")) ===
-              fam[(status_code="200", target="/api")] ===
-              Prometheus.labels(fam, (status_code=200, target="/api")) ===
-              fam[(status_code=200, target="/api")] ===
-              Prometheus.labels(fam, RequestLabels("/api", 200)) ===
-              fam[RequestLabels("/api", 200)]
+            fam[("/api", "200")] ===
+            Prometheus.labels(fam, ("/api", 200)) ===
+            fam[("/api", 200)] ===
+            Prometheus.labels(fam, (target = "/api", status_code = "200")) ===
+            fam[(target = "/api", status_code = "200")] ===
+            Prometheus.labels(fam, (target = "/api", status_code = 200)) ===
+            fam[(target = "/api", status_code = 200)] ===
+            Prometheus.labels(fam, (status_code = "200", target = "/api")) ===
+            fam[(status_code = "200", target = "/api")] ===
+            Prometheus.labels(fam, (status_code = 200, target = "/api")) ===
+            fam[(status_code = 200, target = "/api")] ===
+            Prometheus.labels(fam, RequestLabels("/api", 200)) ===
+            fam[RequestLabels("/api", 200)]
     end
 end
 
 @testset "Prometheus.GCCollector" begin
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.GCCollector(; registry=r)
+    c = Prometheus.GCCollector(; registry = r)
     @test c in r.collectors
     # Record before and after stats and test that the metrics are in between
     old_stats = Base.gc_num()
@@ -606,7 +606,7 @@ end
 
 @testset "Prometheus.ProcessCollector" begin
     r = Prometheus.CollectorRegistry()
-    c = Prometheus.ProcessCollector(; registry=r)
+    c = Prometheus.ProcessCollector(; registry = r)
     @test c in r.collectors
     metrics = Prometheus.collect(c)
     procfs_available = c.system_boot_time > 0
@@ -656,7 +656,7 @@ end
         @test isempty(metrics)
     end
     # Test that pid function works
-    procc = Prometheus.ProcessCollector(() -> getpid(); registry=nothing)
+    procc = Prometheus.ProcessCollector(() -> getpid(); registry = nothing)
     metrics = Prometheus.collect(procc)
     if procfs_available
         @test length(metrics) > 0
@@ -680,10 +680,10 @@ end
 
 @testset "Character escaping in exposition" begin
     counter = Prometheus.Family{Prometheus.Counter}(
-        "counter_name", "Help with slash \\ and newline \n", ("label_name", );
+        "counter_name", "Help with slash \\ and newline \n", ("label_name",);
         registry = nothing,
     )
-    Prometheus.inc(Prometheus.labels(counter, ("backslash \\, quote \", newline \n", )))
+    Prometheus.inc(Prometheus.labels(counter, ("backslash \\, quote \", newline \n",)))
     metric = first(Prometheus.collect(counter))
     @test sprint(Prometheus.expose_metric, metric) ==
         """
@@ -696,8 +696,8 @@ end
 @testset "Prometheus.expose(::Union{String, IO})" begin
     r = Prometheus.DEFAULT_REGISTRY
     empty!(r.collectors)
-    Prometheus.inc(Prometheus.Counter("prom_counter", "Counting things"; registry=r))
-    Prometheus.set(Prometheus.Gauge("prom_gauge", "Gauging things"; registry=r), 1.2)
+    Prometheus.inc(Prometheus.Counter("prom_counter", "Counting things"; registry = r))
+    Prometheus.set(Prometheus.Gauge("prom_gauge", "Gauging things"; registry = r), 1.2)
     mktempdir() do dir
         default = joinpath(dir, "default.prom")
         Prometheus.expose(default)
@@ -708,17 +708,17 @@ end
         reg_io = IOBuffer()
         Prometheus.expose(reg_io, r)
         @test read(default, String) ==
-              read(reg, String) ==
-              String(take!(default_io)) ==
-              String(take!(reg_io)) ==
-              """
-              # HELP prom_counter Counting things
-              # TYPE prom_counter counter
-              prom_counter 1
-              # HELP prom_gauge Gauging things
-              # TYPE prom_gauge gauge
-              prom_gauge 1.2
-              """
+            read(reg, String) ==
+            String(take!(default_io)) ==
+            String(take!(reg_io)) ==
+            """
+            # HELP prom_counter Counting things
+            # TYPE prom_counter counter
+            prom_counter 1
+            # HELP prom_gauge Gauging things
+            # TYPE prom_gauge gauge
+            prom_gauge 1.2
+            """
     end
 end
 
@@ -736,7 +736,7 @@ end
         elseif http.message.target == "/metrics/reg"
             return Prometheus.expose(http, Prometheus.DEFAULT_REGISTRY)
         elseif http.message.target == "/metrics/nogzip"
-            return Prometheus.expose(http; compress=false)
+            return Prometheus.expose(http; compress = false)
         else
             HTTP.setstatus(http, 404)
             HTTP.startwrite(http)
@@ -752,7 +752,7 @@ end
     r_post = HTTP.request("POST", "http://localhost:8123/metrics/default")
     @test String(r_post.body) == reference_output
     # Bad URI
-    r_bad = HTTP.request("GET", "http://localhost:8123"; status_exception=false)
+    r_bad = HTTP.request("GET", "http://localhost:8123"; status_exception = false)
     @test r_bad.status == 404
     # Compression
     for enc in ("gzip", "br, compress, gzip", "br;q=1.0, gzip;q=0.8, *;q=0.1")
@@ -780,7 +780,11 @@ end
 
 @testset "Utilities" begin
     x = 1
-    err = try Prometheus.@assert x === nothing; catch e; e; end
+    err = try
+        Prometheus.@assert x === nothing
+    catch e
+        e
+    end
     @test err isa Prometheus.AssertionError
     @test err.msg == "x === nothing"
     @test occursin("`x === nothing`", sprint(showerror, err))
