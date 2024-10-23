@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Histogram exposition now emits `le="+Inf"` (previously `le="Inf"`) for the `Inf` bucket.
    `+Inf` is required by OpenMetrics and is what every other reference client emits; Prom
    text accepts both. ([#36])
+### Removed
+ - Dropped support for Julia versions below 1.10. Julia 1.10 (the current LTS) is now the
+   minimum supported version for this and future releases. ([#22])
 
 ## [v1.5.1] - 2026-07-03
 ### Fixed
@@ -135,6 +138,7 @@ See [README.md](README.md) for details and documentation.
 [#14]: https://github.com/fredrikekre/Prometheus.jl/issues/14
 [#19]: https://github.com/fredrikekre/Prometheus.jl/issues/19
 [#21]: https://github.com/fredrikekre/Prometheus.jl/issues/21
+[#22]: https://github.com/fredrikekre/Prometheus.jl/issues/22
 [#30]: https://github.com/fredrikekre/Prometheus.jl/issues/30
 [#31]: https://github.com/fredrikekre/Prometheus.jl/issues/31
 [#34]: https://github.com/fredrikekre/Prometheus.jl/issues/34
