@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.4.1] - 2024-10-23
+### Fixed
+ - Metric names for histogram buckets now correctly appends the `_bucket` suffix. ([#21])
+
 ## [v1.4.0] - 2024-07-12
 ### Changed
  - The public API of Prometheus.jl is now marked `public` in Julia versions that support it.
@@ -72,8 +76,12 @@ See [README.md](README.md) for details and documentation.
 [v1.1.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.1.0
 [v1.2.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.2.0
 [v1.3.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.3.0
+[v1.4.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.4.0
+[v1.4.1]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.4.1
 [#6]: https://github.com/fredrikekre/Prometheus.jl/issues/6
 [#7]: https://github.com/fredrikekre/Prometheus.jl/issues/7
 [#10]: https://github.com/fredrikekre/Prometheus.jl/issues/10
 [#13]: https://github.com/fredrikekre/Prometheus.jl/issues/13
 [#14]: https://github.com/fredrikekre/Prometheus.jl/issues/14
+[#19]: https://github.com/fredrikekre/Prometheus.jl/issues/19
+[#21]: https://github.com/fredrikekre/Prometheus.jl/issues/21
