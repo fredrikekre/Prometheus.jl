@@ -1,13 +1,12 @@
-name: CI
-
+---
+name: Test
 on:
   push:
     branches:
       - 'master'
       - 'release-'
-    tags: '*'
+    tags: ['*']
   pull_request:
-
 jobs:
   test:
     name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ github.event_name }}
@@ -15,10 +14,7 @@ jobs:
     strategy:
       matrix:
         version:
-          - '1.6'
-          - '1.7'
-          - '1.8'
-          - '1.9'
+          - '1.10'
           - '1'
           - 'nightly'
         os:
@@ -41,19 +37,3 @@ jobs:
           file: lcov.info
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  docs:
-    name: Documentation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v2
-        with:
-          version: '1.11'
-      - uses: julia-actions/cache@v2
-      - name: Install dependencies
-        run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
-      - name: Build and deploy
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
-        run: julia --project=docs --color=yes docs/make.jl
