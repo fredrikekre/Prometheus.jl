@@ -64,40 +64,6 @@ function verify_metric_name(metric_name::String)
     return metric_name
 end
 
-###########################################
-# Compat for const fields, @lock, @atomic #
-###########################################
-@eval macro $(Symbol("const"))(field)
-    if VERSION >= v"1.8.0-DEV.1148"
-        Expr(:const, esc(field))
-    else
-        return esc(field)
-    end
-end
-if VERSION < v"1.7.0"
-    # Defined but not exported
-    using Base: @lock
-end
-if !isdefined(Base, Symbol("@atomic")) # v1.7.0
-    const ATOMIC_COMPAT_LOCK = ReentrantLock()
-    macro atomic(expr)
-        if Meta.isexpr(expr, :(::))
-            return esc(expr)
-        else
-            return quote
-                lock(ATOMIC_COMPAT_LOCK)
-                tmp = $(esc(expr))
-                unlock(ATOMIC_COMPAT_LOCK)
-                tmp
-            end
-        end
-    end
-end
-if !isdefined(Base, :eachsplit) # v1.8.0
-    const eachsplit = split
-end
-
-
 #####################
 # CollectorRegistry #
 #####################
@@ -151,8 +117,8 @@ end
 #    certain types of exceptions. This is count_exceptions in Python.
 
 mutable struct Counter <: Collector
-    @const metric_name::String
-    @const help::String
+    const metric_name::String
+    const help::String
     @atomic value::Float64
 
     function Counter(
@@ -222,8 +188,8 @@ end
 # https://prometheus.io/docs/instrumenting/writing_clientlibs/#gauge
 
 mutable struct Gauge <: Collector
-    @const metric_name::String
-    @const help::String
+    const metric_name::String
+    const help::String
     @atomic value::Float64
 
     function Gauge(
@@ -335,12 +301,12 @@ const DEFAULT_BUCKETS = [
 ]
 
 mutable struct Histogram <: Collector
-    @const metric_name::String
-    @const help::String
-    @const buckets::Vector{Float64}
+    const metric_name::String
+    const help::String
+    const buckets::Vector{Float64}
     @atomic _count::Int
     @atomic _sum::Float64
-    @const bucket_counters::Vector{Threads.Atomic{Int}}
+    const bucket_counters::Vector{Threads.Atomic{Int}}
 
     function Histogram(
             metric_name::String, help::String; buckets::Vector{Float64} = DEFAULT_BUCKETS,
@@ -439,8 +405,8 @@ end
 # https://prometheus.io/docs/instrumenting/writing_clientlibs/#summary
 
 mutable struct Summary <: Collector
-    @const metric_name::String
-    @const help::String
+    const metric_name::String
+    const help::String
     @atomic _count::Int
     @atomic _sum::Float64
 
