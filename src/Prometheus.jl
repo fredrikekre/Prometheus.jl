@@ -930,7 +930,8 @@ function collect!(metrics::Vector, family::Family{C}) where {C}
     end
     # Sort samples lexicographically by the labels
     sort!(
-        samples; by = function(x)
+        samples;
+        by = function (x)
             labels = x.label_values
             @assert(labels !== nothing)
             return labels.label_values
