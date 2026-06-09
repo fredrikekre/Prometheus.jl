@@ -1069,8 +1069,10 @@ function expose_io(io::IO, reg::CollectorRegistry)
     for metric in metrics
         truncate(buf, 0)
         expose_metric(buf, metric)
-        seekstart(buf)
-        write(io, buf)
+        # Write the collected bytes directly. Note: write(io, buf) (passing the IOBuffer
+        # object) drops the body on HTTP.jl 2.0 server streams, which do not implement
+        # unsafe_write, so write a Vector{UInt8} which is supported by all IO backends.
+        write(io, take!(buf))
     end
     return
 end
