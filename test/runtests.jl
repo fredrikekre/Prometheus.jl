@@ -767,9 +767,10 @@ end
         @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
         @test String(r_nogzip.body) == reference_output
     end
-    # Test missing Accept-Encoding (HTTP.jl adds it automatically unless explicitly set)
+    # Client that does not accept gzip. HTTP.jl always advertises gzip unless an explicit,
+    # non-empty Accept-Encoding is supplied (an empty value no longer suppresses it on 2.0).
     r_nogzip = HTTP.request(
-        "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => ""],
+        "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => "identity"],
     )
     @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
     @test String(r_nogzip.body) == reference_output
