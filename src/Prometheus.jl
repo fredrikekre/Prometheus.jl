@@ -1083,12 +1083,24 @@ end
 
 const CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
 
-function gzip_accepted(http::HTTP.Stream)
-    accept_encoding = HTTP.header(http.message, "Accept-Encoding")
+gzip_accepted(http::HTTP.Stream) =
+    gzip_accepted(HTTP.header(http.message, "Accept-Encoding"))
+
+function gzip_accepted(accept_encoding::AbstractString)
+    # See RFC 9110 §12.5.3. A coding is acceptable only if its qvalue is greater
+    # than zero, so e.g. "gzip;q=0" is an explicit refusal and must return false.
     for enc in eachsplit(accept_encoding, ',')
-        if lowercase(strip(first(eachsplit(enc, ';')))) == "gzip"
-            return true
+        parts = eachsplit(enc, ';')
+        coding = lowercase(strip(first(parts)))
+        coding == "gzip" || continue
+        qvalue = 1.0
+        for param in Iterators.drop(parts, 1)
+            kv = strip(param)
+            if startswith(lowercase(kv), "q=")
+                qvalue = something(tryparse(Float64, strip(kv[3:end])), 0.0)
+            end
         end
+        qvalue > 0 && return true
     end
     return false
 end

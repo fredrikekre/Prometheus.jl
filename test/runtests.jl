@@ -767,13 +767,27 @@ end
         @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
         @test String(r_nogzip.body) == reference_output
     end
-    # Client that does not accept gzip. HTTP.jl always advertises gzip unless an explicit,
-    # non-empty Accept-Encoding is supplied (an empty value no longer suppresses it on 2.0).
+    # Client that does not accept gzip. "identity" is the spec token for "no encoding"
+    # and is transmitted verbatim by both HTTP.jl 1.x and 2.x, so the server must not
+    # compress. (An empty Accept-Encoding cannot be used here: HTTP.jl 2.x rewrites an
+    # empty value into "gzip, deflate", so the empty round-trip is version dependent.
+    # The server side negotiation for the empty value is covered directly below.)
     r_nogzip = HTTP.request(
         "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => "identity"],
     )
     @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
     @test String(r_nogzip.body) == reference_output
+    # Server side content negotiation (RFC 9110 §12.5.3), independent of the HTTP.jl
+    # client behavior. Both an empty Accept-Encoding and "identity" mean "no gzip".
+    @test Prometheus.gzip_accepted("") == false
+    @test Prometheus.gzip_accepted("identity") == false
+    @test Prometheus.gzip_accepted("gzip") == true
+    @test Prometheus.gzip_accepted("br, deflate") == false
+    @test Prometheus.gzip_accepted("br;q=1.0, gzip;q=0.8, *;q=0.1") == true
+    # A qvalue of zero is an explicit refusal and must not be treated as acceptance.
+    @test Prometheus.gzip_accepted("gzip;q=0") == false
+    @test Prometheus.gzip_accepted("identity, gzip;q=0") == false
+    @test Prometheus.gzip_accepted("gzip; q=0.0") == false
     # Clean up
     close(server)
     wait(server)
