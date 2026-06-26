@@ -2,7 +2,7 @@
 
 using HTTP: HTTP
 using Prometheus: Prometheus
-using Test: @test, @test_logs, @test_throws, @testset
+using Test: @test, @test_broken, @test_logs, @test_throws, @testset
 
 @testset "Prometheus.CollectorRegistry" begin
     empty!(Prometheus.DEFAULT_REGISTRY.collectors)
@@ -769,14 +769,25 @@ end
     end
     # Client that does not accept gzip. "identity" is the spec token for "no encoding"
     # and is transmitted verbatim by both HTTP.jl 1.x and 2.x, so the server must not
-    # compress. (An empty Accept-Encoding cannot be used here: HTTP.jl 2.x rewrites an
-    # empty value into "gzip, deflate", so the empty round-trip is version dependent.
-    # The server side negotiation for the empty value is covered directly below.)
+    # compress.
     r_nogzip = HTTP.request(
         "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => "identity"],
     )
     @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
     @test String(r_nogzip.body) == reference_output
+    # An empty Accept-Encoding also means "no encoding acceptable" (RFC 9110), so the
+    # server must not gzip. HTTP.jl 1.x transmits the empty value verbatim, but HTTP.jl
+    # 2.x rewrites it to "gzip, deflate" client-side before the request is sent, so the
+    # server compresses and the no-gzip assertion cannot hold there.
+    r_empty = HTTP.request(
+        "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => ""],
+    )
+    if pkgversion(HTTP) < v"2"
+        @test HTTP.header(r_empty, "Content-Encoding", nothing) === nothing
+    end
+    # The body matches on both versions: HTTP.jl transparently decompresses gzip, so
+    # this stays a plain @test
+    @test String(r_empty.body) == reference_output
     # Server side content negotiation (RFC 9110 §12.5.3), independent of the HTTP.jl
     # client behavior. Both an empty Accept-Encoding and "identity" mean "no gzip".
     @test Prometheus.gzip_accepted("") == false
