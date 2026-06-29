@@ -9,7 +9,7 @@ SimpleBufferStream = "777ac1f9-54b0-4bf8-805c-2214025038e7"
 
 [compat]
 CodecZlib = "0.7"
-HTTP = "1, 2"
+HTTP = "1, 2.5.1"
 SimpleBufferStream = "1"
 julia = "1.6"
 

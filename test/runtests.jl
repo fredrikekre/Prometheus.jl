@@ -768,23 +768,18 @@ end
         @test String(r_nogzip.body) == reference_output
     end
     # Client that does not accept gzip. "identity" is the spec token for "no encoding"
-    # and is transmitted verbatim by both HTTP.jl 1.x and 2.x, so the server must not
-    # compress.
     r_nogzip = HTTP.request(
         "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => "identity"],
     )
     @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
     @test String(r_nogzip.body) == reference_output
     # An empty Accept-Encoding also means "no encoding acceptable" (RFC 9110), so the
-    # server must not gzip. HTTP.jl 1.x transmits the empty value verbatim, but HTTP.jl
-    # 2.x rewrites it to "gzip, deflate" client-side before the request is sent, so the
-    # server compresses and the no-gzip assertion cannot hold there.
+    # server must not gzip.
     r_empty = HTTP.request(
         "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => ""],
     )
-    if pkgversion(HTTP) < v"2"
-        @test HTTP.header(r_empty, "Content-Encoding", nothing) === nothing
-    end
+    @test HTTP.header(r_empty, "Content-Encoding", nothing) === nothing
+
     # The body matches on both versions: HTTP.jl transparently decompresses gzip, so
     # this stays a plain @test
     @test String(r_empty.body) == reference_output
