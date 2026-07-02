@@ -893,7 +893,27 @@ function collect!(metrics::Vector, family::Family{C}) where {C}
     buf = Metric[]
     label_names = family.label_names
     @lock family.lock begin
-        for (label_values, child) in family.children
+        # Iterate children in a fixed order and emit each child's samples in the
+        # order the child produced them. This preserves the numeric `le` ordering
+        # that Histogram.collect! emits, which the spec requires ("le" MUST
+        # appear in ascending numeric order); a final flat sort over the merged
+        # (label_values..., le) tuple would clobber it since e.g.
+        # "10.0" < "2.5" lexicographically.
+        #
+        # The outer sort itself is NOT required by the spec — neither the
+        # Prometheus text format nor OpenMetrics mandates ordering between
+        # different label sets, only that samples for the same label set are
+        # grouped (which the block-per-child loop below already guarantees).
+        # Alternatives if this ever shows up in a profile:
+        #   - Use OrderedCollections.OrderedDict for `children` and sort! it in
+        #     place, avoiding the Base.collect allocation.
+        #   - Skip the sort entirely. Dict iteration order is stable across
+        #     scrapes as long as the label set isn't churning (no inserts /
+        #     removes trigger a rehash), so long-running exporters would see
+        #     stable output anyway.
+        child_pairs = Base.collect(family.children)
+        sort!(child_pairs; by = p -> p[1].label_values)
+        for (label_values, child) in child_pairs
             # collect!(...) the child, throw away the metric, but keep the samples
             child_metrics = collect!(resize!(buf, 0), child)
             @assert length(child_metrics) == 1 # TODO: maybe this should be supported?
@@ -928,15 +948,6 @@ function collect!(metrics::Vector, family::Family{C}) where {C}
             end
         end
     end
-    # Sort samples lexicographically by the labels
-    sort!(
-        samples;
-        by = function (x)
-            labels = x.label_values
-            @assert(labels !== nothing)
-            return labels.label_values
-        end
-    )
     push!(
         metrics,
         Metric(type, family.metric_name, family.help, samples),

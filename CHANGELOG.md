@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    registration. ([#34])
  - Removed the 1 MB cap on `expose_io`'s scratch buffer that could silently truncate output
    for large metrics (e.g. histogram families with high label cardinality). ([#34])
+ - Preserve numeric bucket order for `Family{Histogram}` exposition. Buckets are now emitted
+   with `le` in ascending numeric order (previously they were sorted lexicographically, e.g.
+   `"10.0"` before `"2.5"` with the default bucket set), as required by the Prometheus text
+   format and OpenMetrics specs. ([#34])
 
 ## [v1.5.0] - 2026-07-02
 ### Added
