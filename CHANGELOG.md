@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.5.0] - 2026-07-02
+### Added
+ - Support for HTTP.jl version 2. ([#30], [#31])
+### Fixed
+ - Fixed `Content-Encoding` to match the spec (q-values and wildcards). ([#30], [#31])
+
 ## [v1.4.1] - 2024-10-23
 ### Fixed
  - Metric names for histogram buckets now correctly appends the `_bucket` suffix. ([#21])
@@ -78,6 +84,7 @@ See [README.md](README.md) for details and documentation.
 [v1.3.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.3.0
 [v1.4.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.4.0
 [v1.4.1]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.4.1
+[v1.5.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.5.0
 [#6]: https://github.com/fredrikekre/Prometheus.jl/issues/6
 [#7]: https://github.com/fredrikekre/Prometheus.jl/issues/7
 [#10]: https://github.com/fredrikekre/Prometheus.jl/issues/10
@@ -85,3 +92,5 @@ See [README.md](README.md) for details and documentation.
 [#14]: https://github.com/fredrikekre/Prometheus.jl/issues/14
 [#19]: https://github.com/fredrikekre/Prometheus.jl/issues/19
 [#21]: https://github.com/fredrikekre/Prometheus.jl/issues/21
+[#30]: https://github.com/fredrikekre/Prometheus.jl/issues/30
+[#31]: https://github.com/fredrikekre/Prometheus.jl/issues/31
