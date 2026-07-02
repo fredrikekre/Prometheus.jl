@@ -1151,8 +1151,20 @@ function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; co
                 # to let the write(http, buf) below finish.
                 close(gzstream)
             end
-            write(http, buf)
-            wait(tsk)
+            try
+                write(http, buf)
+                wait(tsk)
+            catch
+                # If write(http, buf) fails we close buf to notify the compressor task.
+                # Waiting for the task will then throw an expected error but this is
+                # necessary in order to make sure the compressor task terminates.
+                close(buf)
+                try
+                    wait(tsk)
+                catch
+                end
+                rethrow()
+            end
         else
             expose_io(http, reg)
         end
