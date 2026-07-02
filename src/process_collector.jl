@@ -141,7 +141,12 @@ function collect!(metrics::Vector, procc::ProcessCollector)
         @error "ProcessCollector: could not read /proc/$(pid)/stat" e
     end
     if proc_stat !== nothing
-        fields = split(split(proc_stat, ')')[end]) # This strips off the first two fields
+        # /proc/[pid]/stat field layout is documented in proc(5). Fields are
+        # space-separated; the first two (pid and comm) are stripped by splitting on the
+        # closing paren of `comm` since `comm` itself can contain spaces. The `- 2` below
+        # converts a proc(5) field number (1-based, including pid/comm) to the index into
+        # `fields`.
+        fields = split(split(proc_stat, ')')[end])
         # CPU time and start time requires clock_ticks_per_second
         if clock_ticks_per_second > 0
             utime = parse(Int, fields[14 - 2]) / clock_ticks_per_second
