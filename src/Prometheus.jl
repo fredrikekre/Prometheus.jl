@@ -1065,7 +1065,7 @@ function expose_io(io::IO, reg::CollectorRegistry)
     end
     sort!(metrics; by = metric -> metric.metric_name)
     # Write to IO
-    buf = IOBuffer(; maxsize = 1024^2) # 1 MB
+    buf = IOBuffer()
     for metric in metrics
         expose_metric(buf, metric)
         write(io, take!(buf))

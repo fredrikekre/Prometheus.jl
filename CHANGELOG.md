@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - `Summary` collectors now reserve the base metric name in addition to `_count`/`_sum`, so
    a `Summary` and a `Counter`/`Gauge` sharing a name are correctly rejected at
    registration. ([#34])
+ - Removed the 1 MB cap on `expose_io`'s scratch buffer that could silently truncate output
+   for large metrics (e.g. histogram families with high label cardinality). ([#34])
 
 ## [v1.5.0] - 2026-07-02
 ### Added
