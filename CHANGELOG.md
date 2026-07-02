@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    with `le` in ascending numeric order (previously they were sorted lexicographically, e.g.
    `"10.0"` before `"2.5"` with the default bucket set), as required by the Prometheus text
    format and OpenMetrics specs. ([#34])
+ - `expose(::HTTP.Stream)` now cleans up the compressor task when the HTTP write fails (e.g.
+   client disconnect mid-stream), avoiding a background task that would otherwise buffer the
+   rest of the payload in memory. ([#34])
 
 ## [v1.5.0] - 2026-07-02
 ### Added
