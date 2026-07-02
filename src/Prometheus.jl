@@ -480,7 +480,7 @@ Construct a Summary collector.
 Summary(::String, ::String; kwargs...)
 
 function metric_names(summary::Summary)
-    return (summary.metric_name * "_count", summary.metric_name * "_sum")
+    return (summary.metric_name * "_count", summary.metric_name * "_sum", summary.metric_name)
 end
 
 """

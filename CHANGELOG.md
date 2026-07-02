@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.5.1] - Unreleased
+### Fixed
+ - `Summary` collectors now reserve the base metric name in addition to `_count`/`_sum`, so
+   a `Summary` and a `Counter`/`Gauge` sharing a name are correctly rejected at
+   registration. ([#34])
+
 ## [v1.5.0] - 2026-07-02
 ### Added
  - Support for HTTP.jl version 2. ([#30], [#31])
@@ -85,6 +91,7 @@ See [README.md](README.md) for details and documentation.
 [v1.4.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.4.0
 [v1.4.1]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.4.1
 [v1.5.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.5.0
+[v1.5.1]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.5.1
 [#6]: https://github.com/fredrikekre/Prometheus.jl/issues/6
 [#7]: https://github.com/fredrikekre/Prometheus.jl/issues/7
 [#10]: https://github.com/fredrikekre/Prometheus.jl/issues/10
@@ -94,3 +101,4 @@ See [README.md](README.md) for details and documentation.
 [#21]: https://github.com/fredrikekre/Prometheus.jl/issues/21
 [#30]: https://github.com/fredrikekre/Prometheus.jl/issues/30
 [#31]: https://github.com/fredrikekre/Prometheus.jl/issues/31
+[#34]: https://github.com/fredrikekre/Prometheus.jl/issues/34

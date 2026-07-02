@@ -32,6 +32,14 @@ using Test: @test, @test_logs, @test_throws, @testset
         Prometheus.ArgumentError("collector already contains a metric with the name \"metric_name_counter\""),
         Prometheus.register(r, c),
     )
+    # Summary reserves its base name too (in addition to _count/_sum): a
+    # Counter with the same base name must collide.
+    r = Prometheus.CollectorRegistry()
+    Prometheus.Summary("shared_name", "help"; registry = r)
+    @test_throws(
+        Prometheus.ArgumentError("collector already contains a metric with the name \"shared_name\""),
+        Prometheus.Counter("shared_name", "help"; registry = r),
+    )
 end
 
 @testset "Prometheus.Counter" begin
