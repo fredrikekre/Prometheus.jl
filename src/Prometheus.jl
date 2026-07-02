@@ -1067,11 +1067,7 @@ function expose_io(io::IO, reg::CollectorRegistry)
     # Write to IO
     buf = IOBuffer(; maxsize = 1024^2) # 1 MB
     for metric in metrics
-        truncate(buf, 0)
         expose_metric(buf, metric)
-        # Write the collected bytes directly. Note: write(io, buf) (passing the IOBuffer
-        # object) drops the body on HTTP.jl 2.0 server streams, which do not implement
-        # unsafe_write, so write a Vector{UInt8} which is supported by all IO backends.
         write(io, take!(buf))
     end
     return
@@ -1087,12 +1083,13 @@ gzip_accepted(http::HTTP.Stream) =
     gzip_accepted(HTTP.header(http.message, "Accept-Encoding"))
 
 function gzip_accepted(accept_encoding::AbstractString)
-    # See RFC 9110 §12.5.3. A coding is acceptable only if its qvalue is greater
-    # than zero, so e.g. "gzip;q=0" is an explicit refusal and must return false.
+    # RFC 9110 §12.5.3: explicit gzip entry takes precedence over * wildcard.
+    gzip_qvalue = nothing
+    wildcard_qvalue = 0.0
     for enc in eachsplit(accept_encoding, ',')
         parts = eachsplit(enc, ';')
         coding = lowercase(strip(first(parts)))
-        coding == "gzip" || continue
+        coding in ("gzip", "*") || continue
         qvalue = 1.0
         for param in Iterators.drop(parts, 1)
             kv = strip(param)
@@ -1100,9 +1097,13 @@ function gzip_accepted(accept_encoding::AbstractString)
                 qvalue = something(tryparse(Float64, strip(kv[3:end])), 0.0)
             end
         end
-        qvalue > 0 && return true
+        if coding == "gzip"
+            gzip_qvalue = qvalue
+        else
+            wildcard_qvalue = qvalue
+        end
     end
-    return false
+    return something(gzip_qvalue, wildcard_qvalue) > 0
 end
 
 """

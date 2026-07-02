@@ -2,7 +2,7 @@
 
 using HTTP: HTTP
 using Prometheus: Prometheus
-using Test: @test, @test_broken, @test_logs, @test_throws, @testset
+using Test: @test, @test_logs, @test_throws, @testset
 
 @testset "Prometheus.CollectorRegistry" begin
     empty!(Prometheus.DEFAULT_REGISTRY.collectors)
@@ -794,6 +794,12 @@ end
     @test Prometheus.gzip_accepted("gzip;q=0") == false
     @test Prometheus.gzip_accepted("identity, gzip;q=0") == false
     @test Prometheus.gzip_accepted("gzip; q=0.0") == false
+    # * wildcard matches gzip when gzip is not explicitly listed.
+    @test Prometheus.gzip_accepted("*") == true
+    @test Prometheus.gzip_accepted("br, *") == true
+    @test Prometheus.gzip_accepted("*;q=0") == false
+    # An explicit gzip entry takes precedence over the wildcard.
+    @test Prometheus.gzip_accepted("gzip;q=0, *;q=1") == false
     # Clean up
     close(server)
     wait(server)
