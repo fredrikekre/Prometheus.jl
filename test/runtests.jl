@@ -767,12 +767,39 @@ end
         @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
         @test String(r_nogzip.body) == reference_output
     end
-    # Test missing Accept-Encoding (HTTP.jl adds it automatically unless explicitly set)
+    # Client that does not accept gzip. "identity" is the spec token for "no encoding"
     r_nogzip = HTTP.request(
-        "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => ""],
+        "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => "identity"],
     )
     @test HTTP.header(r_nogzip, "Content-Encoding", nothing) === nothing
     @test String(r_nogzip.body) == reference_output
+    # An empty Accept-Encoding also means "no encoding acceptable" (RFC 9110), so the
+    # server must not gzip.
+    r_empty = HTTP.request(
+        "GET", "http://localhost:8123/metrics/default", ["Accept-Encoding" => ""],
+    )
+    @test HTTP.header(r_empty, "Content-Encoding", nothing) === nothing
+
+    # The body matches on both versions: HTTP.jl transparently decompresses gzip, so
+    # this stays a plain @test
+    @test String(r_empty.body) == reference_output
+    # Server side content negotiation (RFC 9110 §12.5.3), independent of the HTTP.jl
+    # client behavior. Both an empty Accept-Encoding and "identity" mean "no gzip".
+    @test Prometheus.gzip_accepted("") == false
+    @test Prometheus.gzip_accepted("identity") == false
+    @test Prometheus.gzip_accepted("gzip") == true
+    @test Prometheus.gzip_accepted("br, deflate") == false
+    @test Prometheus.gzip_accepted("br;q=1.0, gzip;q=0.8, *;q=0.1") == true
+    # A qvalue of zero is an explicit refusal and must not be treated as acceptance.
+    @test Prometheus.gzip_accepted("gzip;q=0") == false
+    @test Prometheus.gzip_accepted("identity, gzip;q=0") == false
+    @test Prometheus.gzip_accepted("gzip; q=0.0") == false
+    # * wildcard matches gzip when gzip is not explicitly listed.
+    @test Prometheus.gzip_accepted("*") == true
+    @test Prometheus.gzip_accepted("br, *") == true
+    @test Prometheus.gzip_accepted("*;q=0") == false
+    # An explicit gzip entry takes precedence over the wildcard.
+    @test Prometheus.gzip_accepted("gzip;q=0, *;q=1") == false
     # Clean up
     close(server)
     wait(server)
