@@ -530,6 +530,39 @@ end
     end
 end
 
+@testset "Prometheus.Family{Histogram} bucket ordering (default buckets)" begin
+    # Regression test: buckets must be emitted with `le` in ascending numeric
+    # order, not lexicographic string order. With default buckets, "10.0" sorts
+    # before "2.5" as strings, so a naive sort violates the Prometheus text
+    # format ("buckets MUST appear in increasing numerical order of `le`") and
+    # produces non-monotonic cumulative counts.
+    r = Prometheus.CollectorRegistry()
+    fam = Prometheus.Family{Prometheus.Histogram}(
+        "req_latency_seconds", "Request latency", ("endpoint",); registry = r,
+    )
+    # Three observations with distinct bucket footprints in the misordered range
+    Prometheus.observe(Prometheus.labels(fam, ("/api",)), 1.5)
+    Prometheus.observe(Prometheus.labels(fam, ("/api",)), 3.0)
+    Prometheus.observe(Prometheus.labels(fam, ("/api",)), 6.0)
+    metric = only(Prometheus.collect(fam))
+    bucket_samples = filter(s -> s.suffix == "_bucket", metric.samples)
+    le_values = [parse(Float64, s.label_values.label_values[end]) for s in bucket_samples]
+    @test issorted(le_values)
+    counts = [s.value for s in bucket_samples]
+    @test issorted(counts)
+    # And with multiple label sets: the outer label ordering must still hold
+    Prometheus.observe(Prometheus.labels(fam, ("/other",)), 0.5)
+    metric = only(Prometheus.collect(fam))
+    endpoints = unique(s.label_values.label_values[1] for s in metric.samples)
+    @test endpoints == ["/api", "/other"]
+    for endpoint in endpoints
+        subset = filter(s -> s.suffix == "_bucket" && s.label_values.label_values[1] == endpoint, metric.samples)
+        les = [parse(Float64, s.label_values.label_values[end]) for s in subset]
+        @test issorted(les)
+        @test issorted([s.value for s in subset])
+    end
+end
+
 @testset "Label types for Prometheus.Family{C}" begin
     struct RequestLabels
         target::String
