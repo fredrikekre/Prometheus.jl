@@ -734,6 +734,22 @@ end
         """
 end
 
+@testset "Value formatting at the Int/Float64 boundary" begin
+    # Integer-valued floats within Int range are printed without a trailing
+    # `.0` (matches Go's `%g` shortest form). Values outside Int range fall
+    # back to the float representation instead of throwing InexactError.
+    gauge = Prometheus.Gauge("g", "help"; registry = nothing)
+    # Normal integer-valued case.
+    Prometheus.set(gauge, 42)
+    @test occursin("g 42\n", sprint(Prometheus.expose_metric, only(Prometheus.collect(gauge))))
+    # Fractional case.
+    Prometheus.set(gauge, 1.5)
+    @test occursin("g 1.5\n", sprint(Prometheus.expose_metric, only(Prometheus.collect(gauge))))
+    # Beyond typemax(Int64) — must not throw, must fall through to float.
+    Prometheus.set(gauge, 1.0e19)
+    @test occursin("g 1.0e19\n", sprint(Prometheus.expose_metric, only(Prometheus.collect(gauge))))
+end
+
 @testset "Prometheus.expose(::Union{String, IO})" begin
     r = Prometheus.DEFAULT_REGISTRY
     empty!(r.collectors)

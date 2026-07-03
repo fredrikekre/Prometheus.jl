@@ -995,6 +995,19 @@ function print_escaped(io::IO, help::String, esc)
     return
 end
 
+# Print an integer-valued Float64 without a trailing `.0` (matching the Go
+# reference client's `%g` shortest form), falling back to the float
+# representation when the value would overflow `Int` on conversion. Purely
+# cosmetic — the Prometheus text format accepts either "42" or "42.0".
+function print_value(io::IO, val::Float64)
+    if isinteger(val) && typemin(Int) <= val <= typemax(Int)
+        print(io, Int(val))
+    else
+        print(io, val)
+    end
+    return
+end
+
 function expose_metric(io::IO, metric::Metric)
     print(io, "# HELP ", metric.metric_name, " ")
     print_escaped(io, metric.help, ('\\', '\n'))
@@ -1007,7 +1020,9 @@ function expose_metric(io::IO, metric::Metric)
         @assert(samples.label_values === nothing)
         @assert(samples.suffix === nothing)
         val = samples.value
-        println(io, metric.metric_name, " ", isinteger(val) ? Int(val) : val)
+        print(io, metric.metric_name, " ")
+        print_value(io, val)
+        println(io)
     else
         # Multiple samples, might have labels
         @assert(samples isa Vector{Sample})
@@ -1035,7 +1050,9 @@ function expose_metric(io::IO, metric::Metric)
                 print(io, "}")
             end
             # Print the value
-            println(io, " ", isinteger(sample.value) ? Int(sample.value) : sample.value)
+            print(io, " ")
+            print_value(io, sample.value)
+            println(io)
         end
     end
     return
