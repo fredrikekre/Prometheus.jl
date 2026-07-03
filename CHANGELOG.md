@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - `expose(::HTTP.Stream)` now cleans up the compressor task when the HTTP write fails (e.g.
    client disconnect mid-stream), avoiding a background task that would otherwise buffer the
    rest of the payload in memory. ([#34])
+ - Guarded the `Int(val)` conversion in exposition against overflow, so integer-valued
+   `Float64` values beyond `typemax(Int64)` no longer throw `InexactError` at exposition
+   time. ([#34])
 
 ## [v1.5.0] - 2026-07-02
 ### Added
