@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    (HELP/TYPE keep the base name) and the exposition ends with a `# EOF` trailer.
    Prometheus 3-style scrapers, which prefer OpenMetrics at `q=0.75`, now automatically
    receive the OpenMetrics form. ([#36])
+ - `unit` keyword argument on `Counter`, `Gauge`, `Histogram`, and `Summary` constructors
+   (and via `Family{C}`'s kwargs pass-through). When set, the OpenMetrics output emits a
+   `# UNIT <name> <unit>` metadata line after `# TYPE`. The unit is validated at
+   construction: the metric name must equal the unit or end with `_<unit>` (for counters,
+   any `_total` suffix is stripped before checking). Prom text output is unchanged (the
+   format has no unit metadata). ([#38])
 ### Changed
  - `expose(::HTTP.Stream)` now honors the request's `Accept` header. If the client sent an
    `Accept` header that doesn't include `text/plain; version=0.0.4` (or a compatible
@@ -140,3 +146,4 @@ See [README.md](README.md) for details and documentation.
 [#34]: https://github.com/fredrikekre/Prometheus.jl/issues/34
 [#35]: https://github.com/fredrikekre/Prometheus.jl/issues/35
 [#36]: https://github.com/fredrikekre/Prometheus.jl/issues/36
+[#38]: https://github.com/fredrikekre/Prometheus.jl/issues/38

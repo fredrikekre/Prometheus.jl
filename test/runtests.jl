@@ -792,6 +792,70 @@ end
     end
 end
 
+@testset "OpenMetrics `# UNIT` support" begin
+    # Validation: unit must match the name suffix (or the whole name).
+    @test_throws Prometheus.ArgumentError Prometheus.Counter(
+        "http_requests", "help"; unit = "seconds", registry = nothing,
+    )
+    @test_throws Prometheus.ArgumentError Prometheus.Gauge(
+        "cpu_ms", "help"; unit = "seconds", registry = nothing,
+    )
+    # `_total` on a counter is stripped before checking — `foo_bytes_total`
+    # with unit `bytes` is valid because the OpenMetrics family name is
+    # `foo_bytes`.
+    Prometheus.Counter("network_bytes_total", "help"; unit = "bytes", registry = nothing)
+    # Bare unit as full name is legal (e.g. name and unit both `seconds`).
+    Prometheus.Gauge("seconds", "help"; unit = "seconds", registry = nothing)
+    # Non-empty unit constraint.
+    @test_throws Prometheus.ArgumentError Prometheus.Gauge(
+        "foo", "help"; unit = "", registry = nothing,
+    )
+
+    # Writer: `# UNIT` appears only for OpenMetrics, after `# TYPE`.
+    let r = Prometheus.CollectorRegistry()
+        Prometheus.set(Prometheus.Gauge("cpu_seconds", "CPU time"; unit = "seconds", registry = r), 12.5)
+        pt = sprint(Prometheus.expose_io, r)
+        om = sprint((io, r) -> Prometheus.expose_io(io, r, Prometheus.OPENMETRICS_TEXT_100), r)
+        # Prom text: no # UNIT line.
+        @test !occursin("# UNIT", pt)
+        # OpenMetrics: # UNIT after # TYPE.
+        @test occursin("# TYPE cpu_seconds gauge\n# UNIT cpu_seconds seconds\ncpu_seconds 12.5\n", om)
+    end
+
+    # No unit specified → no `# UNIT` line in either format.
+    let r = Prometheus.CollectorRegistry()
+        Prometheus.set(Prometheus.Gauge("cpu_seconds", "CPU time"; registry = r), 12.5)
+        om = sprint((io, r) -> Prometheus.expose_io(io, r, Prometheus.OPENMETRICS_TEXT_100), r)
+        @test !occursin("# UNIT", om)
+    end
+
+    # Counter: `# UNIT` uses the base family name, not `<name>_total`.
+    let r = Prometheus.CollectorRegistry()
+        Prometheus.inc(
+            Prometheus.Counter(
+                "network_bytes_total", "Bytes over the wire";
+                unit = "bytes", registry = r,
+            )
+        )
+        om = sprint((io, r) -> Prometheus.expose_io(io, r, Prometheus.OPENMETRICS_TEXT_100), r)
+        @test occursin("# UNIT network_bytes bytes\n", om)
+        @test !occursin("# UNIT network_bytes_total ", om)
+        # And the sample line still uses `_total`.
+        @test occursin("network_bytes_total 1\n", om)
+    end
+
+    # Family propagates unit from children.
+    let r = Prometheus.CollectorRegistry()
+        fam = Prometheus.Family{Prometheus.Histogram}(
+            "request_bytes", "Request size", ("route",);
+            unit = "bytes", registry = r,
+        )
+        Prometheus.observe(Prometheus.labels(fam, ("/api",)), 42)
+        om = sprint((io, r) -> Prometheus.expose_io(io, r, Prometheus.OPENMETRICS_TEXT_100), r)
+        @test occursin("# TYPE request_bytes histogram\n# UNIT request_bytes bytes\n", om)
+    end
+end
+
 @testset "Prometheus.expose(::HTTP.Stream)" begin
     empty!(Prometheus.DEFAULT_REGISTRY.collectors)
     Prometheus.inc(Prometheus.Counter("prom_counter", "Counting things"))

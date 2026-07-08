@@ -64,6 +64,26 @@ function verify_metric_name(metric_name::String)
     return metric_name
 end
 
+# OpenMetrics 1.0.0: `# UNIT <name> <unit>` requires the metric family name to
+# either equal the unit or end in `_<unit>`. `base_name` is the family name for
+# OpenMetrics purposes — for Counters that's the metric name with any `_total`
+# suffix stripped, since the OpenMetrics family name of a counter MUST NOT
+# include `_total` (and thus the unit suffix, if present, sits before `_total`
+# in Prom-text-style naming).
+function verify_unit(base_name::AbstractString, unit::Union{String, Nothing})
+    unit === nothing && return unit
+    isempty(unit) && throw(ArgumentError("unit must be a non-empty string or nothing"))
+    if base_name != unit && !endswith(base_name, "_" * unit)
+        throw(
+            ArgumentError(
+                "metric name \"$(base_name)\" does not end with unit suffix \"_$(unit)\" " *
+                    "(required by OpenMetrics for `# UNIT` metadata)",
+            )
+        )
+    end
+    return unit
+end
+
 ###########################################
 # Compat for const fields, @lock, @atomic #
 ###########################################
@@ -153,14 +173,23 @@ end
 mutable struct Counter <: Collector
     @const metric_name::String
     @const help::String
+    @const unit::Union{String, Nothing}
     @atomic value::Float64
 
     function Counter(
             metric_name::String, help::String;
+            unit::Union{String, Nothing} = nothing,
             registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         initial_value = 0.0
-        counter = new(verify_metric_name(metric_name), help, initial_value)
+        # For counters, the OpenMetrics family name drops `_total`; validate
+        # unit against that base name.
+        base = endswith(metric_name, "_total") ?
+            chop(metric_name; tail = length("_total")) : metric_name
+        counter = new(
+            verify_metric_name(metric_name), help, verify_unit(base, unit),
+            initial_value,
+        )
         if registry !== nothing
             register(registry, counter)
         end
@@ -169,7 +198,7 @@ mutable struct Counter <: Collector
 end
 
 """
-    Prometheus.Counter(name, help; registry=DEFAULT_REGISTRY)
+    Prometheus.Counter(name, help; unit=nothing, registry=DEFAULT_REGISTRY)
 
 Construct a Counter collector.
 
@@ -178,6 +207,11 @@ Construct a Counter collector.
  - `help :: String`: the documentation for the counter metric.
 
 **Keyword arguments**
+ - `unit :: Union{String, Nothing}`: the unit of the metric (e.g. `"seconds"`, `"bytes"`).
+   When set, an OpenMetrics `# UNIT` metadata line is emitted for this metric. The unit
+   must be a suffix of the metric name separated by `_` (any `_total` suffix is stripped
+   first), e.g. `Counter("network_bytes_total", ...; unit = "bytes")`. Has no effect on
+   Prometheus text output. Defaults to `nothing` (no unit metadata).
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
@@ -208,8 +242,8 @@ end
 
 function collect!(metrics::Vector, counter::Counter)
     metric = Metric(
-        "counter", counter.metric_name, counter.help,
-        Sample(nothing, nothing, nothing, @atomic(counter.value))
+        "counter", counter.metric_name, counter.help, counter.unit,
+        Sample(nothing, nothing, nothing, @atomic(counter.value)),
     )
     push!(metrics, metric)
     return metrics
@@ -224,14 +258,19 @@ end
 mutable struct Gauge <: Collector
     @const metric_name::String
     @const help::String
+    @const unit::Union{String, Nothing}
     @atomic value::Float64
 
     function Gauge(
             metric_name::String, help::String;
+            unit::Union{String, Nothing} = nothing,
             registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         initial_value = 0.0
-        gauge = new(verify_metric_name(metric_name), help, initial_value)
+        gauge = new(
+            verify_metric_name(metric_name), help,
+            verify_unit(metric_name, unit), initial_value,
+        )
         if registry !== nothing
             register(registry, gauge)
         end
@@ -240,7 +279,7 @@ mutable struct Gauge <: Collector
 end
 
 """
-    Prometheus.Gauge(name, help; registry=DEFAULT_REGISTRY)
+    Prometheus.Gauge(name, help; unit=nothing, registry=DEFAULT_REGISTRY)
 
 Construct a Gauge collector.
 
@@ -249,6 +288,11 @@ Construct a Gauge collector.
  - `help :: String`: the documentation for the gauge metric.
 
 **Keyword arguments**
+ - `unit :: Union{String, Nothing}`: the unit of the metric (e.g. `"seconds"`, `"bytes"`).
+   When set, an OpenMetrics `# UNIT` metadata line is emitted for this metric. The unit
+   must be a suffix of the metric name separated by `_`, e.g.
+   `Gauge("cpu_temperature_celsius", ...; unit = "celsius")`. Has no effect on Prometheus
+   text output. Defaults to `nothing` (no unit metadata).
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
@@ -315,7 +359,7 @@ end
 
 function collect!(metrics::Vector, gauge::Gauge)
     metric = Metric(
-        "gauge", gauge.metric_name, gauge.help,
+        "gauge", gauge.metric_name, gauge.help, gauge.unit,
         Sample(nothing, nothing, nothing, @atomic(gauge.value)),
     )
     push!(metrics, metric)
@@ -337,6 +381,7 @@ const DEFAULT_BUCKETS = [
 mutable struct Histogram <: Collector
     @const metric_name::String
     @const help::String
+    @const unit::Union{String, Nothing}
     @const buckets::Vector{Float64}
     @atomic _count::Int
     @atomic _sum::Float64
@@ -344,6 +389,7 @@ mutable struct Histogram <: Collector
 
     function Histogram(
             metric_name::String, help::String; buckets::Vector{Float64} = DEFAULT_BUCKETS,
+            unit::Union{String, Nothing} = nothing,
             registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         # Make a copy of and verify buckets
@@ -355,7 +401,8 @@ mutable struct Histogram <: Collector
         initial_count = 0
         bucket_counters = [Threads.Atomic{Int}(0) for _ in 1:length(buckets)]
         histogram = new(
-            verify_metric_name(metric_name), help, buckets,
+            verify_metric_name(metric_name), help, verify_unit(metric_name, unit),
+            buckets,
             initial_count, initial_sum, bucket_counters,
         )
         if registry !== nothing
@@ -366,7 +413,7 @@ mutable struct Histogram <: Collector
 end
 
 """
-    Prometheus.Histogram(name, help; buckets=DEFAULT_BUCKETS, registry=DEFAULT_REGISTRY)
+    Prometheus.Histogram(name, help; buckets=DEFAULT_BUCKETS, unit=nothing, registry=DEFAULT_REGISTRY)
 
 Construct a Histogram collector.
 
@@ -378,6 +425,11 @@ Construct a Histogram collector.
  - `buckets :: Vector{Float64}`: the upper bounds for the histogram buckets. The buckets
    must be sorted. `Inf` will be added as a last bucket if not already included. The default
    buckets are `DEFAULT_BUCKETS = $(DEFAULT_BUCKETS)`.
+ - `unit :: Union{String, Nothing}`: the unit of the metric (e.g. `"seconds"`, `"bytes"`).
+   When set, an OpenMetrics `# UNIT` metadata line is emitted for this metric. The unit
+   must be a suffix of the metric name separated by `_`, e.g.
+   `Histogram("http_request_duration_seconds", ...; unit = "seconds")`. Has no effect on
+   Prometheus text output. Defaults to `nothing` (no unit metadata).
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
@@ -428,7 +480,7 @@ function collect!(metrics::Vector, histogram::Histogram)
         )
         samples[2 + i] = sample
     end
-    metric = Metric("histogram", histogram.metric_name, histogram.help, samples)
+    metric = Metric("histogram", histogram.metric_name, histogram.help, histogram.unit, samples)
     push!(metrics, metric)
     return metrics
 end
@@ -442,16 +494,21 @@ end
 mutable struct Summary <: Collector
     @const metric_name::String
     @const help::String
+    @const unit::Union{String, Nothing}
     @atomic _count::Int
     @atomic _sum::Float64
 
     function Summary(
             metric_name::String, help::String;
+            unit::Union{String, Nothing} = nothing,
             registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         initial_count = 0
         initial_sum = 0.0
-        summary = new(verify_metric_name(metric_name), help, initial_count, initial_sum)
+        summary = new(
+            verify_metric_name(metric_name), help, verify_unit(metric_name, unit),
+            initial_count, initial_sum,
+        )
         if registry !== nothing
             register(registry, summary)
         end
@@ -460,7 +517,7 @@ mutable struct Summary <: Collector
 end
 
 """
-    Prometheus.Summary(name, help; registry=DEFAULT_REGISTRY)
+    Prometheus.Summary(name, help; unit=nothing, registry=DEFAULT_REGISTRY)
 
 Construct a Summary collector.
 
@@ -469,6 +526,11 @@ Construct a Summary collector.
  - `help :: String`: the documentation for the summary metric.
 
 **Keyword arguments**
+ - `unit :: Union{String, Nothing}`: the unit of the metric (e.g. `"seconds"`, `"bytes"`).
+   When set, an OpenMetrics `# UNIT` metadata line is emitted for this metric. The unit
+   must be a suffix of the metric name separated by `_`, e.g.
+   `Summary("cache_lookup_seconds", ...; unit = "seconds")`. Has no effect on Prometheus
+   text output. Defaults to `nothing` (no unit metadata).
  - `registry :: Prometheus.CollectorRegistry`: the registry in which to register the
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
@@ -498,7 +560,7 @@ end
 
 function collect!(metrics::Vector, summary::Summary)
     metric = Metric(
-        "summary", summary.metric_name, summary.help,
+        "summary", summary.metric_name, summary.help, summary.unit,
         [
             Sample("_count", nothing, nothing, @atomic(summary._count)),
             Sample("_sum", nothing, nothing, @atomic(summary._sum)),
@@ -785,7 +847,9 @@ label values encountered a new collector of type `C <: Collector` will be create
    collector. If not specified the default registry is used. Pass `registry = nothing` to
    skip registration.
  - `kwargs...`: any extra keyword arguments required for `C`s constructor, see
-   [`Prometheus.labels`](@ref).
+   [`Prometheus.labels`](@ref). For example, `unit = "seconds"` (see the collector
+   constructors) is forwarded to each child so the family emits a shared `# UNIT`
+   line in OpenMetrics output.
 
 **Methods**
  - [`Prometheus.labels`](@ref): get or create the collector for a specific set of labels.
@@ -893,6 +957,7 @@ function collect!(metrics::Vector, family::Family{C}) where {C}
     samples = Sample[]
     buf = Metric[]
     label_names = family.label_names
+    unit::Union{String, Nothing} = nothing
     @lock family.lock begin
         # Iterate children in a fixed order and emit each child's samples in the
         # order the child produced them. This preserves the numeric `le` ordering
@@ -920,6 +985,9 @@ function collect!(metrics::Vector, family::Family{C}) where {C}
             @assert length(child_metrics) == 1 # TODO: maybe this should be supported?
             child_metric = child_metrics[1]
             @assert(child_metric.type == type)
+            # All children of a Family share the same unit (same constructor
+            # closure); read it once from any child.
+            unit = child_metric.unit
             # Unwrap and rewrap samples with the labels
             child_samples = child_metric.samples
             if child_samples isa Sample
@@ -951,7 +1019,7 @@ function collect!(metrics::Vector, family::Family{C}) where {C}
     end
     push!(
         metrics,
-        Metric(type, family.metric_name, family.help, samples),
+        Metric(type, family.metric_name, family.help, unit, samples),
     )
     return metrics
 end
@@ -1008,9 +1076,11 @@ struct Metric
     type::String
     metric_name::String
     help::String
+    unit::Union{String, Nothing}
     # TODO: Union{Tuple{Sample}, Vector{Sample}} would always make this iterable.
     samples::Union{Sample, Vector{Sample}}
 end
+Metric(type, metric_name, help, samples) = Metric(type, metric_name, help, nothing, samples)
 
 function print_escaped(io::IO, help::String, esc)
     for c in help
@@ -1063,6 +1133,11 @@ function expose_metric(io::IO, metric::Metric, format::MetricFormat = PROM_TEXT_
     print_escaped(io, metric.help, ('\\', '\n'))
     println(io)
     println(io, "# TYPE ", header_name, " ", metric.type)
+    # `# UNIT` is OpenMetrics-only and optional per family. Emitted after TYPE
+    # per the format's ordering rules.
+    if format isa OpenMetrics && metric.unit !== nothing
+        println(io, "# UNIT ", header_name, " ", metric.unit)
+    end
     samples = metric.samples
     if samples isa Sample
         # Single sample, no labels
