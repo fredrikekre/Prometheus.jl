@@ -153,6 +153,17 @@ end
 mutable struct Counter <: Collector
     @const metric_name::String
     @const help::String
+    # Populated with `time()` in the inner constructor. Caveat: for a top-level
+    # `const c = Counter(...)` in a precompiled package, the constructor runs
+    # at precompile time and this Float64 gets baked into the .ji cache — so
+    # `created` will reflect precompilation time, not process start, and every
+    # process that loads the cached package sees the same value. Fixing this
+    # requires the `Ptr{Nothing}` sentinel trick used by ProcessCollector
+    # (pointers reset to NULL on cache deserialize; see `initialize_process_collector`
+    # in src/process_collector.jl). Punted for now — the workaround is to
+    # construct the Counter lazily (e.g. inside `__init__` or on first use)
+    # rather than at module top level.
+    @const created::Float64
     @atomic value::Float64
 
     function Counter(
@@ -160,7 +171,7 @@ mutable struct Counter <: Collector
             registry::Union{CollectorRegistry, Nothing} = DEFAULT_REGISTRY,
         )
         initial_value = 0.0
-        counter = new(verify_metric_name(metric_name), help, initial_value)
+        counter = new(verify_metric_name(metric_name), help, time(), initial_value)
         if registry !== nothing
             register(registry, counter)
         end
@@ -209,7 +220,10 @@ end
 function collect!(metrics::Vector, counter::Counter)
     metric = Metric(
         "counter", counter.metric_name, counter.help,
-        Sample(nothing, nothing, nothing, @atomic(counter.value))
+        [
+            Sample(nothing, nothing, nothing, @atomic(counter.value)),
+            Sample("_created", nothing, nothing, counter.created),
+        ],
     )
     push!(metrics, metric)
     return metrics
@@ -338,6 +352,8 @@ mutable struct Histogram <: Collector
     @const metric_name::String
     @const help::String
     @const buckets::Vector{Float64}
+    # See the note on `Counter.created` re: precompilation.
+    @const created::Float64
     @atomic _count::Int
     @atomic _sum::Float64
     @const bucket_counters::Vector{Threads.Atomic{Int}}
@@ -355,7 +371,7 @@ mutable struct Histogram <: Collector
         initial_count = 0
         bucket_counters = [Threads.Atomic{Int}(0) for _ in 1:length(buckets)]
         histogram = new(
-            verify_metric_name(metric_name), help, buckets,
+            verify_metric_name(metric_name), help, buckets, time(),
             initial_count, initial_sum, bucket_counters,
         )
         if registry !== nothing
@@ -417,7 +433,7 @@ end
 
 function collect!(metrics::Vector, histogram::Histogram)
     label_names = LabelNames(("le",))
-    samples = Vector{Sample}(undef, 2 + length(histogram.buckets))
+    samples = Vector{Sample}(undef, 3 + length(histogram.buckets))
     samples[1] = Sample("_count", nothing, nothing, @atomic(histogram._count))
     samples[2] = Sample("_sum", nothing, nothing, @atomic(histogram._sum))
     for i in 1:length(histogram.buckets)
@@ -428,6 +444,7 @@ function collect!(metrics::Vector, histogram::Histogram)
         )
         samples[2 + i] = sample
     end
+    samples[end] = Sample("_created", nothing, nothing, histogram.created)
     metric = Metric("histogram", histogram.metric_name, histogram.help, samples)
     push!(metrics, metric)
     return metrics
@@ -442,6 +459,8 @@ end
 mutable struct Summary <: Collector
     @const metric_name::String
     @const help::String
+    # See the note on `Counter.created` re: precompilation.
+    @const created::Float64
     @atomic _count::Int
     @atomic _sum::Float64
 
@@ -451,7 +470,7 @@ mutable struct Summary <: Collector
         )
         initial_count = 0
         initial_sum = 0.0
-        summary = new(verify_metric_name(metric_name), help, initial_count, initial_sum)
+        summary = new(verify_metric_name(metric_name), help, time(), initial_count, initial_sum)
         if registry !== nothing
             register(registry, summary)
         end
@@ -502,7 +521,8 @@ function collect!(metrics::Vector, summary::Summary)
         [
             Sample("_count", nothing, nothing, @atomic(summary._count)),
             Sample("_sum", nothing, nothing, @atomic(summary._sum)),
-        ]
+            Sample("_created", nothing, nothing, summary.created),
+        ],
     )
     push!(metrics, metric)
     return metrics
@@ -1077,8 +1097,15 @@ function expose_metric(io::IO, metric::Metric, format::MetricFormat = PROM_TEXT_
         # Multiple samples, might have labels
         @assert(samples isa Vector{Sample})
         for sample in samples
-            # Print metric name (with `_total` for OpenMetrics counters)
-            print(io, sample_name)
+            # `_created` is OpenMetrics-only; skip it for Prom text since the
+            # format has no equivalent concept.
+            if sample.suffix == "_created" && !(format isa OpenMetrics)
+                continue
+            end
+            # Print metric name. Counter sample lines take the `_total` suffix
+            # in OpenMetrics — except `_created`, which uses the family base
+            # name (`foo_created`, not `foo_total_created`).
+            print(io, sample.suffix == "_created" ? header_name : sample_name)
             # Print potential suffix
             if sample.suffix !== nothing
                 print(io, sample.suffix)

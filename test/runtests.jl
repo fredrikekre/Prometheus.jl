@@ -69,8 +69,12 @@ end
     metric = metrics[1]
     @test metric.metric_name == c.metric_name
     @test metric.help == c.help
-    @test metric.samples.value == c.value
-    # Prometheus.expose_metric(...)
+    @test length(metric.samples) == 2
+    @test metric.samples[1].suffix === nothing
+    @test metric.samples[1].value == c.value
+    @test metric.samples[2].suffix == "_created"
+    @test metric.samples[2].value == c.created
+    # Prometheus.expose_metric(...): Prom text hides `_created`.
     @test sprint(Prometheus.expose_metric, metric) ==
         sprint(Prometheus.expose_io, r) ==
         """
@@ -78,6 +82,10 @@ end
         # TYPE metric_name_counter counter
         metric_name_counter 3
         """
+    # OpenMetrics includes `_created` and the `_total` sample suffix.
+    om = sprint((io, m) -> Prometheus.expose_metric(io, m, Prometheus.OPENMETRICS_TEXT_100), metric)
+    @test occursin("metric_name_counter_total 3\n", om)
+    @test occursin("metric_name_counter_created $(c.created)\n", om)
 end
 
 @testset "Prometheus.Gauge" begin
@@ -158,15 +166,18 @@ end
     metric = metrics[1]
     @test metric.metric_name == c.metric_name
     @test metric.help == c.help
-    @test length(metric.samples) == 2
-    s1, s2 = metric.samples[1], metric.samples[2]
+    @test length(metric.samples) == 3
+    s1, s2, s3 = metric.samples[1], metric.samples[2], metric.samples[3]
     @test s1.suffix == "_count"
     @test s2.suffix == "_sum"
+    @test s3.suffix == "_created"
     @test s1.label_values === nothing
     @test s2.label_values === nothing
+    @test s3.label_values === nothing
     @test s1.value == 2
     @test s2.value == 11
-    # Prometheus.expose_metric(...)
+    @test s3.value == c.created
+    # Prometheus.expose_metric(...): Prom text hides `_created`.
     @test sprint(Prometheus.expose_metric, metric) ==
         sprint(Prometheus.expose_io, r) ==
         """
@@ -175,6 +186,9 @@ end
         metric_name_summary_count 2
         metric_name_summary_sum 11
         """
+    # OpenMetrics includes `_created`.
+    om = sprint((io, m) -> Prometheus.expose_metric(io, m, Prometheus.OPENMETRICS_TEXT_100), metric)
+    @test occursin("metric_name_summary_created $(c.created)\n", om)
 end
 
 @testset "Prometheus.Histogram" begin
@@ -219,7 +233,7 @@ end
     metric = metrics[1]
     @test metric.metric_name == c.metric_name
     @test metric.help == c.help
-    @test length(metric.samples) == length(buckets) + 2
+    @test length(metric.samples) == length(buckets) + 3
     s1, s2 = metric.samples[1], metric.samples[2]
     @test s1.suffix == "_count"
     @test s2.suffix == "_sum"
@@ -227,14 +241,16 @@ end
     @test s2.label_values === nothing
     @test s1.value == 2
     @test s2.value == 0.5 + 1.6
-    for (ub, counter, sample, known_count) in zip(c.buckets, c.bucket_counters, metric.samples[3:end], [1, 2, 2])
+    @test metric.samples[end].suffix == "_created"
+    @test metric.samples[end].value == c.created
+    for (ub, counter, sample, known_count) in zip(c.buckets, c.bucket_counters, metric.samples[3:(end - 1)], [1, 2, 2])
         @test sample.suffix == "_bucket"
         @test (sample.label_names::Prometheus.LabelNames{1}).label_names === (:le,)
         @test (sample.label_values::Prometheus.LabelValues{1}).label_values ==
             (Prometheus.format_bucket_boundary(ub),)
         @test sample.value == counter[] == known_count
     end
-    # Prometheus.expose_metric(...)
+    # Prometheus.expose_metric(...): Prom text hides `_created`.
     @test sprint(Prometheus.expose_metric, metric) ==
         sprint(Prometheus.expose_io, r) ==
         """
@@ -246,6 +262,9 @@ end
         metric_name_histogram_bucket{le="2.0"} 2
         metric_name_histogram_bucket{le="+Inf"} 2
         """
+    # OpenMetrics includes `_created`.
+    om = sprint((io, m) -> Prometheus.expose_metric(io, m, Prometheus.OPENMETRICS_TEXT_100), metric)
+    @test occursin("metric_name_histogram_created $(c.created)\n", om)
 end
 
 @testset "Prometheus.LabelNames and Prometheus.LabelValues" begin
@@ -316,13 +335,17 @@ end
     metric = metrics[1]
     @test metric.metric_name == c.metric_name
     @test metric.help == c.help
-    @test length(metric.samples) == 2
-    s1, s2 = metric.samples[1], metric.samples[2]
+    # Counter emits an extra `_created` sample per child; Gauge does not.
+    samples_per_child = Collector === Prometheus.Counter ? 2 : 1
+    @test length(metric.samples) == 2 * samples_per_child
+    s1 = metric.samples[1]
+    s2 = metric.samples[1 + samples_per_child]
     @test s1.label_values.label_values == ("/bar/", "404")
     @test s2.label_values.label_values == ("/foo/", "200")
     @test s1.value == 3
     @test s2.value == 3
-    # Prometheus.expose_metric(...)
+    # Prometheus.expose_metric(...): Prom text hides `_created`, so output is
+    # the same regardless of Collector type.
     type = Collector === Prometheus.Counter ? "counter" : "gauge"
     @test sprint(Prometheus.expose_metric, metric) ==
         sprint(Prometheus.expose_io, r) ==
@@ -500,17 +523,22 @@ end
     if Collector === Prometheus.Histogram
         buckets = Prometheus.labels(c, l1).buckets
         @test length(buckets) == length(Prometheus.labels(c, l2).buckets)
-        @test length(metric.samples) == 2 * (length(buckets) + 2)
-        # _count and _sum samples
-        s1, s2, s5, s6 = metric.samples[[1, 2, 5, 6]]
-        @test s1.label_values.label_values == s2.label_values.label_values == ("/bar/", "404")
-        @test s5.label_values.label_values == s6.label_values.label_values == ("/foo/", "200")
-        @test s1.value == 2   # _count
-        @test s2.value == 6.4 # _sum
-        @test s5.value == 2   # _count
-        @test s6.value == 4.6 # _sum
+        # Per child: _count, _sum, N buckets, _created.
+        per_child = length(buckets) + 3
+        @test length(metric.samples) == 2 * per_child
+        # _count and _sum samples (l2 first — sorted by label_values ascending)
+        s_count_l2 = metric.samples[1]
+        s_sum_l2 = metric.samples[2]
+        s_count_l1 = metric.samples[per_child + 1]
+        s_sum_l1 = metric.samples[per_child + 2]
+        @test s_count_l2.label_values.label_values == s_sum_l2.label_values.label_values == ("/bar/", "404")
+        @test s_count_l1.label_values.label_values == s_sum_l1.label_values.label_values == ("/foo/", "200")
+        @test s_count_l2.value == 2   # _count
+        @test s_sum_l2.value == 6.4 # _sum
+        @test s_count_l1.value == 2   # _count
+        @test s_sum_l1.value == 4.6 # _sum
         # {le} samples
-        for (ls, subrange) in ((l1, 7:8), (l2, 3:4))
+        for (ls, subrange) in ((l2, 3:(2 + length(buckets))), (l1, (per_child + 3):(per_child + 2 + length(buckets))))
             for (ub, counter, sample) in zip(buckets, Prometheus.labels(c, ls).bucket_counters, metric.samples[subrange])
                 @test sample.suffix == "_bucket"
                 @test (sample.label_names::Prometheus.LabelNames{3}).label_names ===
@@ -521,14 +549,19 @@ end
             end
         end
     else # Collector === Prometheus.Summary
-        @test length(metric.samples) == 4
-        s1, s2, s3, s4 = metric.samples
-        @test s1.label_values.label_values == s2.label_values.label_values == ("/bar/", "404")
-        @test s3.label_values.label_values == s4.label_values.label_values == ("/foo/", "200")
+        # Per child: _count, _sum, _created.
+        @test length(metric.samples) == 6
+        s1, s2, s3, s4, s5, s6 = metric.samples
+        @test s1.label_values.label_values == s2.label_values.label_values ==
+            s3.label_values.label_values == ("/bar/", "404")
+        @test s4.label_values.label_values == s5.label_values.label_values ==
+            s6.label_values.label_values == ("/foo/", "200")
         @test s1.value == 2   # _count
         @test s2.value == 6.4 # _sum
-        @test s3.value == 2   # _count
-        @test s4.value == 4.6 # _sum
+        @test s3.suffix == "_created"
+        @test s4.value == 2   # _count
+        @test s5.value == 4.6 # _sum
+        @test s6.suffix == "_created"
         # Prometheus.expose_metric(...)
         @test sprint(Prometheus.expose_metric, metric) ==
             sprint(Prometheus.expose_io, r) ==

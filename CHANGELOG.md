@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    (HELP/TYPE keep the base name) and the exposition ends with a `# EOF` trailer.
    Prometheus 3-style scrapers, which prefer OpenMetrics at `q=0.75`, now automatically
    receive the OpenMetrics form. ([#36])
+ - OpenMetrics output emits `_created` timestamps for `Counter`, `Histogram`, and `Summary`
+   collectors. Each collector records `time()` at construction and emits a
+   `<name>_created <unix_ts>` sample per family — this lets scrapers distinguish an actual
+   counter decrease (a bug) from a counter reset on process restart. Prom text output is
+   unchanged (the format has no `_created` concept). ([#37])
 ### Changed
  - `expose(::HTTP.Stream)` now honors the request's `Accept` header. If the client sent an
    `Accept` header that doesn't include `text/plain; version=0.0.4` (or a compatible
@@ -140,3 +145,4 @@ See [README.md](README.md) for details and documentation.
 [#34]: https://github.com/fredrikekre/Prometheus.jl/issues/34
 [#35]: https://github.com/fredrikekre/Prometheus.jl/issues/35
 [#36]: https://github.com/fredrikekre/Prometheus.jl/issues/36
+[#37]: https://github.com/fredrikekre/Prometheus.jl/issues/37
