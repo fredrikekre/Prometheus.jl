@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+ - OpenMetrics 1.0.0 text output (`application/openmetrics-text; version=1.0.0; charset=utf-8`).
+   `expose(::HTTP.Stream)` now parses the client's `Accept` header, picks the highest-q
+   supported format, and emits either Prometheus text 0.0.4 (default) or OpenMetrics 1.0.0.
+   OpenMetrics differences from Prom text: counter sample lines carry a `_total` suffix
+   (HELP/TYPE keep the base name) and the exposition ends with a `# EOF` trailer.
+   Prometheus 3-style scrapers, which prefer OpenMetrics at `q=0.75`, now automatically
+   receive the OpenMetrics form. ([#36])
 ### Changed
  - `expose(::HTTP.Stream)` now honors the request's `Accept` header. If the client sent an
    `Accept` header that doesn't include `text/plain; version=0.0.4` (or a compatible
@@ -16,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - `expose(::HTTP.Stream)` responses now include `Vary: Accept, Accept-Encoding`, signalling
    to shared caches (proxies, CDNs) that the response depends on both request headers.
    ([#35])
+### Fixed
+ - Histogram exposition now emits `le="+Inf"` (previously `le="Inf"`) for the `Inf` bucket.
+   `+Inf` is required by OpenMetrics and is what every other reference client emits; Prom
+   text accepts both. ([#36])
 
 ## [v1.5.1] - 2026-07-03
 ### Fixed
@@ -127,3 +139,4 @@ See [README.md](README.md) for details and documentation.
 [#31]: https://github.com/fredrikekre/Prometheus.jl/issues/31
 [#34]: https://github.com/fredrikekre/Prometheus.jl/issues/34
 [#35]: https://github.com/fredrikekre/Prometheus.jl/issues/35
+[#36]: https://github.com/fredrikekre/Prometheus.jl/issues/36
