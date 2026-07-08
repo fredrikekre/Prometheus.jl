@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Added
+ - `expose(::HTTP.Stream)` responses now include `Vary: Accept, Accept-Encoding`, signalling
+   to shared caches (proxies, CDNs) that the response depends on both request headers.
+   ([#35])
+### Changed
+ - `expose(::HTTP.Stream)` now honors the request's `Accept` header. If the client sent an
+   `Accept` header that doesn't include `text/plain; version=0.0.4` (or a compatible
+   superset such as `text/plain`, `text/*`, or `*/*`) with non-zero q-value, the response
+   is now `406 Not Acceptable`. Requests without an `Accept` header, or with `*/*`, are
+   unaffected — so curl, browsers, and standard Prometheus scrapers all continue to work.
+   ([#35])
+
 ## [v1.5.1] - 2026-07-03
 ### Fixed
  - `Summary` collectors now reserve the base metric name in addition to `_count`/`_sum`, so
@@ -114,3 +127,4 @@ See [README.md](README.md) for details and documentation.
 [#30]: https://github.com/fredrikekre/Prometheus.jl/issues/30
 [#31]: https://github.com/fredrikekre/Prometheus.jl/issues/31
 [#34]: https://github.com/fredrikekre/Prometheus.jl/issues/34
+[#35]: https://github.com/fredrikekre/Prometheus.jl/issues/35

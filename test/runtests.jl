@@ -815,6 +815,8 @@ end
     r_default = HTTP.request("GET", "http://localhost:8123/metrics/default")
     r_ref = HTTP.request("GET", "http://localhost:8123/metrics/reg")
     @test String(r_default.body) == String(r_ref.body) == reference_output
+    # Vary header is set so shared caches key on Accept and Accept-Encoding.
+    @test HTTP.header(r_default, "Vary") == "Accept, Accept-Encoding"
     # HEAD
     @test isempty(HTTP.request("HEAD", "http://localhost:8123/metrics/default").body)
     # POST (no filtering in the server above)
@@ -869,6 +871,57 @@ end
     @test Prometheus.gzip_accepted("*;q=0") == false
     # An explicit gzip entry takes precedence over the wildcard.
     @test Prometheus.gzip_accepted("gzip;q=0, *;q=1") == false
+
+    # Server-side Accept negotiation (RFC 9110 §12.5.1). We only speak
+    # `text/plain; version=0.0.4`; the check is a boolean gate.
+    # Absent/empty Accept => any media type is acceptable.
+    @test Prometheus.accepts_prom_text_004("") == true
+    # Direct hits.
+    @test Prometheus.accepts_prom_text_004("text/plain") == true
+    @test Prometheus.accepts_prom_text_004("text/plain; version=0.0.4") == true
+    @test Prometheus.accepts_prom_text_004("text/plain;version=0.0.4;q=0.25") == true
+    # Wildcards match.
+    @test Prometheus.accepts_prom_text_004("*/*") == true
+    @test Prometheus.accepts_prom_text_004("text/*") == true
+    # A non-matching version param is a mismatch.
+    @test Prometheus.accepts_prom_text_004("text/plain; version=1.0.0") == false
+    # Other media types don't match.
+    @test Prometheus.accepts_prom_text_004(
+        "application/openmetrics-text; version=1.0.0",
+    ) == false
+    # A modern Prometheus scrape sends us at q=0.25 alongside OpenMetrics; still fine.
+    @test Prometheus.accepts_prom_text_004(
+        "application/openmetrics-text;version=1.0.0;q=0.75," *
+            "application/openmetrics-text;version=0.0.1;q=0.5," *
+            "text/plain;version=0.0.4;q=0.25,*/*;q=0.1",
+    ) == true
+    # q=0 is explicit refusal, even alongside a matching wildcard —
+    # RFC precedence: the more specific media range wins.
+    @test Prometheus.accepts_prom_text_004("text/plain;q=0") == false
+    @test Prometheus.accepts_prom_text_004("text/plain;version=0.0.4;q=0, */*") == false
+    @test Prometheus.accepts_prom_text_004("*/*;q=0") == false
+
+    # End-to-end: a scraper that only accepts OpenMetrics gets 406.
+    r_406 = HTTP.request(
+        "GET", "http://localhost:8123/metrics/default",
+        ["Accept" => "application/openmetrics-text;version=1.0.0"];
+        status_exception = false,
+    )
+    @test r_406.status == 406
+    @test occursin("406 Not Acceptable", String(r_406.body))
+    # Vary header is also set on the 406 response — it, too, is a function of Accept.
+    @test HTTP.header(r_406, "Vary") == "Accept, Accept-Encoding"
+    # A scraper that includes us with any non-zero q still succeeds.
+    r_ok = HTTP.request(
+        "GET", "http://localhost:8123/metrics/default",
+        [
+            "Accept" => "application/openmetrics-text;version=1.0.0;q=0.75," *
+                "text/plain;version=0.0.4;q=0.25,*/*;q=0.1",
+        ],
+    )
+    @test r_ok.status == 200
+    @test String(r_ok.body) == reference_output
+
     # Clean up
     close(server)
     wait(server)

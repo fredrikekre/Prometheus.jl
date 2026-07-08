@@ -1107,6 +1107,72 @@ end
 
 const CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
 
+# RFC 9110 §12.5.1: whether a client that sent this Accept header would accept
+# our fixed output, `text/plain; version=0.0.4`. Returns true iff:
+#   - Accept is absent/empty (spec: no Accept => any media type is acceptable), or
+#   - the most-specific matching media range has q > 0.
+#
+# We currently emit exactly one format, so this is a boolean gate rather than a
+# preference-ordered picker. When a second format (OpenMetrics, protobuf) lands,
+# this needs to grow into "pick the highest-q supported entry" and echo the
+# chosen Content-Type. Any `version` parameter on the Accept entry must equal
+# `0.0.4` to match; other non-q parameters (e.g. `charset`) are ignored —
+# Prometheus scrapers don't send them as filters in practice.
+accepts_prom_text_004(http::HTTP.Stream) =
+    accepts_prom_text_004(HTTP.header(http.message, "Accept"))
+
+function accepts_prom_text_004(accept::AbstractString)
+    isempty(strip(accept)) && return true
+    best_specificity = -1
+    best_q = 0.0
+    for entry in eachsplit(accept, ',')
+        parts = eachsplit(entry, ';')
+        media = lowercase(strip(first(parts)))
+        slash = findfirst('/', media)
+        slash === nothing && continue
+        type = SubString(media, 1, prevind(media, slash))
+        subtype = SubString(media, nextind(media, slash))
+        q = 1.0
+        version_param = nothing
+        for param in Iterators.drop(parts, 1)
+            kv = strip(param)
+            eq = findfirst('=', kv)
+            eq === nothing && continue
+            key = lowercase(strip(SubString(kv, 1, prevind(kv, eq))))
+            val = strip(SubString(kv, nextind(kv, eq)))
+            if length(val) >= 2 && first(val) == '"' && last(val) == '"'
+                val = SubString(val, 2, prevind(val, lastindex(val)))
+            end
+            if key == "q"
+                q = something(tryparse(Float64, val), 0.0)
+            elseif key == "version"
+                version_param = val
+            end
+        end
+        specificity = if type == "*" && subtype == "*"
+            0
+        elseif type == "text" && subtype == "*"
+            1
+        elseif type == "text" && subtype == "plain"
+            if version_param === nothing
+                2
+            elseif version_param == "0.0.4"
+                3
+            else
+                -1
+            end
+        else
+            -1
+        end
+        if specificity > best_specificity ||
+                (specificity == best_specificity && q > best_q)
+            best_specificity = specificity
+            best_q = q
+        end
+    end
+    return best_specificity >= 0 && best_q > 0
+end
+
 gzip_accepted(http::HTTP.Stream) =
     gzip_accepted(HTTP.header(http.message, "Accept-Encoding"))
 
@@ -1143,7 +1209,20 @@ The caller is responsible for checking e.g. the HTTP method and URI target. For
 HEAD requests this method do not write a body, however.
 """
 function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; compress::Bool = true)
-    # TODO: Handle Accept request header for different formats?
+    # Content negotiation: we only speak text/plain;version=0.0.4. If the client
+    # sent an Accept header that excludes it, return 406. See REVIEW.md E1.
+    # Signal to shared caches that the response depends on both Accept (200 vs
+    # 406) and Accept-Encoding (gzip vs identity). RFC 9110 §12.5.5.
+    HTTP.setheader(http, "Vary" => "Accept, Accept-Encoding")
+    if !accepts_prom_text_004(http)
+        HTTP.setstatus(http, 406)
+        HTTP.setheader(http, "Content-Type" => "text/plain; charset=utf-8")
+        HTTP.startwrite(http)
+        if http.message.method != "HEAD"
+            write(http, "406 Not Acceptable: server only produces $(CONTENT_TYPE_LATEST)\n")
+        end
+        return
+    end
     # Compress by default if client supports it and user haven't disabled it
     if compress
         compress = gzip_accepted(http)
