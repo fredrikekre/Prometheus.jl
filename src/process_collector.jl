@@ -5,7 +5,7 @@
 #################################
 
 mutable struct ProcessCollector <: Collector
-    @const pid::Function
+    const pid::Function
     @atomic initialized::Ptr{Nothing}
     @atomic system_boot_time::Int
     @atomic clock_ticks_per_second::Int
