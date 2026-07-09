@@ -1,7 +1,7 @@
 # Prometheus.jl - Prometheus client for Julia
 
 [![Documentation](https://img.shields.io/badge/docs-latest%20release-blue.svg)](https://fredrikekre.github.io/Prometheus.jl/)
-[![CI](https://github.com/fredrikekre/Prometheus.jl/actions/workflows/CI.yml/badge.svg?event=push)](https://github.com/fredrikekre/Prometheus.jl/actions/workflows/CI.yml)
+[![CI](https://github.com/fredrikekre/Prometheus.jl/actions/workflows/Test.yml/badge.svg?event=push)](https://github.com/fredrikekre/Prometheus.jl/actions/workflows/Test.yml)
 [![Codecov](https://codecov.io/github/fredrikekre/Prometheus.jl/graph/badge.svg)](https://codecov.io/github/fredrikekre/Prometheus.jl)
 [![code style: runic](https://img.shields.io/badge/code_style-%E1%9A%B1%E1%9A%A2%E1%9A%BE%E1%9B%81%E1%9A%B2-black)](https://github.com/fredrikekre/Runic.jl)
 
