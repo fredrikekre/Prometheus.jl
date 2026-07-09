@@ -1,6 +1,6 @@
 # This file is machine-generated - editing it directly is not advised
 
-julia_version = "1.11.1"
+julia_version = "1.11.9"
 manifest_format = "2.0"
 project_hash = "53cbdb0f6aa70ecb8ff1b1f6baa22bced23c24e5"
 
@@ -57,6 +57,7 @@ version = "0.9.3"
 [[deps.Documenter]]
 deps = ["ANSIColoredPrinters", "AbstractTrees", "Base64", "CodecZlib", "Dates", "DocStringExtensions", "Downloads", "Git", "IOCapture", "InteractiveUtils", "JSON", "LibGit2", "Logging", "Markdown", "MarkdownAST", "Pkg", "PrecompileTools", "REPL", "RegistryInstances", "SHA", "TOML", "Test", "Unicode"]
 git-tree-sha1 = "f15a91e6e3919055efa4f206f942a73fedf5dfe6"
+pinned = true
 uuid = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 version = "1.4.0"
 
@@ -259,7 +260,7 @@ version = "1.11.0"
 deps = ["CodecZlib", "HTTP", "SimpleBufferStream"]
 path = ".."
 uuid = "f25c1797-fe98-4e0c-b252-1b4fe3b6bde6"
-version = "1.4.1"
+version = "1.6.0"
 
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "StyledStrings", "Unicode"]

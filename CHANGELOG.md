@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v1.6.0] - 2026-07-09
 ### Added
  - OpenMetrics 1.0.0 text output (`application/openmetrics-text; version=1.0.0; charset=utf-8`).
    `expose(::HTTP.Stream)` now parses the client's `Accept` header, picks the highest-q
@@ -131,6 +131,7 @@ See [README.md](README.md) for details and documentation.
 [v1.4.1]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.4.1
 [v1.5.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.5.0
 [v1.5.1]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.5.1
+[v1.6.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.6.0
 [#6]: https://github.com/fredrikekre/Prometheus.jl/issues/6
 [#7]: https://github.com/fredrikekre/Prometheus.jl/issues/7
 [#10]: https://github.com/fredrikekre/Prometheus.jl/issues/10
