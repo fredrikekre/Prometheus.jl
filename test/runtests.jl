@@ -230,7 +230,8 @@ end
     for (ub, counter, sample, known_count) in zip(c.buckets, c.bucket_counters, metric.samples[3:end], [1, 2, 2])
         @test sample.suffix == "_bucket"
         @test (sample.label_names::Prometheus.LabelNames{1}).label_names === (:le,)
-        @test (sample.label_values::Prometheus.LabelValues{1}).label_values == (string(ub),)
+        @test (sample.label_values::Prometheus.LabelValues{1}).label_values ==
+            (Prometheus.format_bucket_boundary(ub),)
         @test sample.value == counter[] == known_count
     end
     # Prometheus.expose_metric(...)
@@ -243,7 +244,7 @@ end
         metric_name_histogram_sum 2.1
         metric_name_histogram_bucket{le="1.0"} 1
         metric_name_histogram_bucket{le="2.0"} 2
-        metric_name_histogram_bucket{le="Inf"} 2
+        metric_name_histogram_bucket{le="+Inf"} 2
         """
 end
 
@@ -515,7 +516,7 @@ end
                 @test (sample.label_names::Prometheus.LabelNames{3}).label_names ===
                     (:endpoint, :status_code, :le)
                 @test (sample.label_values::Prometheus.LabelValues{3}).label_values ==
-                    (ls..., string(ub))
+                    (ls..., Prometheus.format_bucket_boundary(ub))
                 @test sample.value == counter[]
             end
         end
@@ -798,6 +799,8 @@ end
     iob = IOBuffer()
     Prometheus.expose(iob)
     reference_output = String(take!(iob))
+    Prometheus.expose_io(iob, Prometheus.DEFAULT_REGISTRY, Prometheus.OPENMETRICS_TEXT_100)
+    openmetrics_output = String(take!(iob))
     # Spin up the server
     server = HTTP.listen!(8123) do http
         if http.message.target == "/metrics/default"
@@ -872,55 +875,127 @@ end
     # An explicit gzip entry takes precedence over the wildcard.
     @test Prometheus.gzip_accepted("gzip;q=0, *;q=1") == false
 
-    # Server-side Accept negotiation (RFC 9110 §12.5.1). We only speak
-    # `text/plain; version=0.0.4`; the check is a boolean gate.
-    # Absent/empty Accept => any media type is acceptable.
-    @test Prometheus.accepts_prom_text_004("") == true
-    # Direct hits.
-    @test Prometheus.accepts_prom_text_004("text/plain") == true
-    @test Prometheus.accepts_prom_text_004("text/plain; version=0.0.4") == true
-    @test Prometheus.accepts_prom_text_004("text/plain;version=0.0.4;q=0.25") == true
-    # Wildcards match.
-    @test Prometheus.accepts_prom_text_004("*/*") == true
-    @test Prometheus.accepts_prom_text_004("text/*") == true
-    # A non-matching version param is a mismatch.
-    @test Prometheus.accepts_prom_text_004("text/plain; version=1.0.0") == false
-    # Other media types don't match.
-    @test Prometheus.accepts_prom_text_004(
-        "application/openmetrics-text; version=1.0.0",
-    ) == false
-    # A modern Prometheus scrape sends us at q=0.25 alongside OpenMetrics; still fine.
-    @test Prometheus.accepts_prom_text_004(
-        "application/openmetrics-text;version=1.0.0;q=0.75," *
-            "application/openmetrics-text;version=0.0.1;q=0.5," *
-            "text/plain;version=0.0.4;q=0.25,*/*;q=0.1",
-    ) == true
-    # q=0 is explicit refusal, even alongside a matching wildcard —
-    # RFC precedence: the more specific media range wins.
-    @test Prometheus.accepts_prom_text_004("text/plain;q=0") == false
-    @test Prometheus.accepts_prom_text_004("text/plain;version=0.0.4;q=0, */*") == false
-    @test Prometheus.accepts_prom_text_004("*/*;q=0") == false
+    # Server-side Accept negotiation (RFC 9110 §12.5.1). Picks the highest-q
+    # supported format; returns `nothing` (→ HTTP 406) if none is acceptable.
+    let PT = Prometheus.PROM_TEXT_004, OM = Prometheus.OPENMETRICS_TEXT_100
+        # Absent/empty Accept => any acceptable, default to Prom text.
+        @test Prometheus.pick_format("") === PT
+        # Direct hits on Prom text.
+        @test Prometheus.pick_format("text/plain") === PT
+        @test Prometheus.pick_format("text/plain; version=0.0.4") === PT
+        @test Prometheus.pick_format("text/plain;version=0.0.4;q=0.25") === PT
+        # Direct hits on OpenMetrics.
+        @test Prometheus.pick_format("application/openmetrics-text") === OM
+        @test Prometheus.pick_format("application/openmetrics-text; version=1.0.0") === OM
+        # Wildcards match; tuple order breaks the tie in favor of Prom text.
+        @test Prometheus.pick_format("*/*") === PT
+        @test Prometheus.pick_format("text/*") === PT
+        # A non-matching version param is a mismatch.
+        @test Prometheus.pick_format("text/plain; version=1.0.0") === nothing
+        @test Prometheus.pick_format("application/openmetrics-text; version=2.0.0") === nothing
+        # OpenMetrics 0.0.1 isn't matched (we emit 1.0.0), but the same request
+        # in the Prom-3 default Accept lists 1.0.0 too — that one wins.
+        @test Prometheus.pick_format("application/openmetrics-text;version=0.0.1") === nothing
+        # A modern Prometheus scrape prefers OpenMetrics (q=0.75) over our text (q=0.25).
+        @test Prometheus.pick_format(
+            "application/openmetrics-text;version=1.0.0;q=0.75," *
+                "application/openmetrics-text;version=0.0.1;q=0.5," *
+                "text/plain;version=0.0.4;q=0.25,*/*;q=0.1",
+        ) === OM
+        # q=0 is explicit refusal; RFC precedence means the more specific range wins.
+        @test Prometheus.pick_format("text/plain;q=0") === nothing
+        # PT is explicitly excluded; the `*/*` fallback still matches OM.
+        @test Prometheus.pick_format("text/plain;version=0.0.4;q=0, */*") === OM
+        @test Prometheus.pick_format("*/*;q=0") === nothing
+        # A protobuf-only scraper gets no match.
+        @test Prometheus.pick_format(
+            "application/vnd.google.protobuf; " *
+                "proto=io.prometheus.client.MetricFamily; encoding=delimited",
+        ) === nothing
+    end
 
-    # End-to-end: a scraper that only accepts OpenMetrics gets 406.
+    # End-to-end: a scraper that only accepts a format we don't support (protobuf) gets 406.
     r_406 = HTTP.request(
         "GET", "http://localhost:8123/metrics/default",
-        ["Accept" => "application/openmetrics-text;version=1.0.0"];
+        [
+            "Accept" => "application/vnd.google.protobuf; " *
+                "proto=io.prometheus.client.MetricFamily; encoding=delimited",
+        ];
         status_exception = false,
     )
     @test r_406.status == 406
     @test occursin("406 Not Acceptable", String(r_406.body))
     # Vary header is also set on the 406 response — it, too, is a function of Accept.
     @test HTTP.header(r_406, "Vary") == "Accept, Accept-Encoding"
-    # A scraper that includes us with any non-zero q still succeeds.
-    r_ok = HTTP.request(
+    # A Prometheus 3-style scrape prefers OpenMetrics: response Content-Type
+    # and body switch to OpenMetrics.
+    r_om = HTTP.request(
         "GET", "http://localhost:8123/metrics/default",
         [
             "Accept" => "application/openmetrics-text;version=1.0.0;q=0.75," *
                 "text/plain;version=0.0.4;q=0.25,*/*;q=0.1",
         ],
     )
-    @test r_ok.status == 200
-    @test String(r_ok.body) == reference_output
+    @test r_om.status == 200
+    @test HTTP.header(r_om, "Content-Type") ==
+        "application/openmetrics-text; version=1.0.0; charset=utf-8"
+    @test String(r_om.body) == openmetrics_output
+    # Body-level OpenMetrics differences vs Prom text: counter `_total` suffix + `# EOF` trailer.
+    @test occursin("prom_counter_total 1", openmetrics_output)
+    @test endswith(openmetrics_output, "# EOF\n")
+    @test !occursin("_total", reference_output)
+    @test !occursin("# EOF", reference_output)
+    # A client that only accepts Prom text gets Prom text (matching Content-Type
+    # and body, no `# EOF` trailer).
+    r_pt_only = HTTP.request(
+        "GET", "http://localhost:8123/metrics/default",
+        ["Accept" => "text/plain;version=0.0.4"],
+    )
+    @test r_pt_only.status == 200
+    @test HTTP.header(r_pt_only, "Content-Type") ==
+        "text/plain; version=0.0.4; charset=utf-8"
+    @test String(r_pt_only.body) == reference_output
+    # Reversed q-values: Prom text q=0.9, OpenMetrics q=0.5 — Prom text wins.
+    r_pt_pref = HTTP.request(
+        "GET", "http://localhost:8123/metrics/default",
+        [
+            "Accept" => "text/plain;version=0.0.4;q=0.9," *
+                "application/openmetrics-text;version=1.0.0;q=0.5",
+        ],
+    )
+    @test r_pt_pref.status == 200
+    @test HTTP.header(r_pt_pref, "Content-Type") ==
+        "text/plain; version=0.0.4; charset=utf-8"
+    @test String(r_pt_pref.body) == reference_output
+    # Equal q-values on both formats — tuple-order tiebreak resolves to Prom text.
+    r_tie = HTTP.request(
+        "GET", "http://localhost:8123/metrics/default",
+        [
+            "Accept" => "application/openmetrics-text;version=1.0.0;q=0.5," *
+                "text/plain;version=0.0.4;q=0.5",
+        ],
+    )
+    @test r_tie.status == 200
+    @test HTTP.header(r_tie, "Content-Type") ==
+        "text/plain; version=0.0.4; charset=utf-8"
+    @test String(r_tie.body) == reference_output
+
+    # Counter already named with `_total` (Prom text idiom) must not double-suffix:
+    # HELP/TYPE strip `_total`, sample line stays `foo_total`. Spec says the
+    # counter MetricFamily name MUST NOT include `_total`.
+    let r = Prometheus.CollectorRegistry()
+        Prometheus.inc(Prometheus.Counter("http_requests_total", "Total HTTP requests"; registry = r))
+        pt = sprint(Prometheus.expose_io, r)
+        om = sprint((io, r) -> Prometheus.expose_io(io, r, Prometheus.OPENMETRICS_TEXT_100), r)
+        # Prom text: name is emitted as-given; sample line matches the family name.
+        @test occursin("# TYPE http_requests_total counter", pt)
+        @test occursin("http_requests_total 1", pt)
+        # OpenMetrics: HELP/TYPE lose the `_total`, sample line keeps it (no doubling).
+        @test occursin("# TYPE http_requests counter", om)
+        @test !occursin("# TYPE http_requests_total ", om)
+        @test occursin("http_requests_total 1", om)
+        @test !occursin("http_requests_total_total", om)
+    end
 
     # Clean up
     close(server)

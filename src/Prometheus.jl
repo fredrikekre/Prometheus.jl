@@ -422,7 +422,8 @@ function collect!(metrics::Vector, histogram::Histogram)
     samples[2] = Sample("_sum", nothing, nothing, @atomic(histogram._sum))
     for i in 1:length(histogram.buckets)
         sample = Sample(
-            "_bucket", label_names, make_label_values(label_names, (histogram.buckets[i],)),
+            "_bucket", label_names,
+            LabelValues((format_bucket_boundary(histogram.buckets[i]),)),
             histogram.bucket_counters[i][],
         )
         samples[2 + i] = sample
@@ -960,6 +961,33 @@ end
 # Exposition #
 ##############
 
+# Wire-format families. `version` is currently carried only for content-type
+# echoing during HTTP negotiation — the writer doesn't branch on it, because
+# OpenMetrics 0.0.1 and 1.0.0 are byte-identical for everything we emit. If a
+# future OpenMetrics/Prom text version introduces a wire change, add another
+# constant and dispatch on `f.version` inside the writer for that format type.
+abstract type MetricFormat end
+
+struct PrometheusText <: MetricFormat
+    version::VersionNumber
+end
+struct OpenMetrics <: MetricFormat
+    version::VersionNumber
+end
+
+const PROM_TEXT_004 = PrometheusText(v"0.0.4")
+const OPENMETRICS_TEXT_100 = OpenMetrics(v"1.0.0")
+
+# In tuple-order preference. Ties in effective q-value during negotiation
+# resolve to the earlier entry, so PROM_TEXT_004 stays the default when a
+# client sends only `*/*` (or no Accept header). See `pick_format`.
+const SUPPORTED_FORMATS = (PROM_TEXT_004, OPENMETRICS_TEXT_100)
+
+media_type(::PrometheusText) = "text/plain"
+media_type(::OpenMetrics) = "application/openmetrics-text"
+
+content_type(f::MetricFormat) = "$(media_type(f)); version=$(f.version); charset=utf-8"
+
 struct Sample
     suffix::Union{String, Nothing} # e.g. _count or _sum
     label_names::Union{LabelNames, Nothing}
@@ -1008,11 +1036,33 @@ function print_value(io::IO, val::Float64)
     return
 end
 
-function expose_metric(io::IO, metric::Metric)
-    print(io, "# HELP ", metric.metric_name, " ")
+# Bucket upper-bound → `le` label value. OpenMetrics REQUIRES the last bucket
+# to render as `+Inf` (not `Inf`); Prom text is lenient but `+Inf` is the
+# canonical form every reference client emits, so use it unconditionally.
+function format_bucket_boundary(x::Float64)
+    x == Inf && return "+Inf"
+    return string(x)
+end
+
+function expose_metric(io::IO, metric::Metric, format::MetricFormat = PROM_TEXT_004)
+    # OpenMetrics: HELP/TYPE lines use the family base name (without `_total`);
+    # counter sample lines always end in `_total`. If the user's Counter is
+    # named `foo_total` (Prom text idiom), strip the suffix for HELP/TYPE so
+    # the sample line stays `foo_total`, matching the Prom text ingested name.
+    # Spec: "The MetricFamily name of a Counter MetricFamily MUST NOT include
+    # the `_total` suffix."
+    header_name, sample_name = if format isa OpenMetrics && metric.type == "counter"
+        base = endswith(metric.metric_name, "_total") ?
+            chop(metric.metric_name; tail = length("_total")) :
+            metric.metric_name
+        (base, base * "_total")
+    else
+        (metric.metric_name, metric.metric_name)
+    end
+    print(io, "# HELP ", header_name, " ")
     print_escaped(io, metric.help, ('\\', '\n'))
     println(io)
-    println(io, "# TYPE ", metric.metric_name, " ", metric.type)
+    println(io, "# TYPE ", header_name, " ", metric.type)
     samples = metric.samples
     if samples isa Sample
         # Single sample, no labels
@@ -1020,15 +1070,15 @@ function expose_metric(io::IO, metric::Metric)
         @assert(samples.label_values === nothing)
         @assert(samples.suffix === nothing)
         val = samples.value
-        print(io, metric.metric_name, " ")
+        print(io, sample_name, " ")
         print_value(io, val)
         println(io)
     else
         # Multiple samples, might have labels
         @assert(samples isa Vector{Sample})
         for sample in samples
-            # Print metric name
-            print(io, metric.metric_name)
+            # Print metric name (with `_total` for OpenMetrics counters)
+            print(io, sample_name)
             # Print potential suffix
             if sample.suffix !== nothing
                 print(io, sample.suffix)
@@ -1083,7 +1133,7 @@ function expose(io::IO, reg::CollectorRegistry = DEFAULT_REGISTRY)
     return expose_io(io, reg)
 end
 
-function expose_io(io::IO, reg::CollectorRegistry)
+function expose_io(io::IO, reg::CollectorRegistry, format::MetricFormat = PROM_TEXT_004)
     # Collect all metrics
     metrics = Metric[]
     @lock reg.lock begin
@@ -1095,8 +1145,12 @@ function expose_io(io::IO, reg::CollectorRegistry)
     # Write to IO
     buf = IOBuffer()
     for metric in metrics
-        expose_metric(buf, metric)
+        expose_metric(buf, metric, format)
         write(io, take!(buf))
+    end
+    # OpenMetrics REQUIRES an `# EOF` trailer.
+    if format isa OpenMetrics
+        write(io, "# EOF\n")
     end
     return
 end
@@ -1105,43 +1159,58 @@ end
 # HTTP.jl integration #
 #######################
 
-const CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
-
-# RFC 9110 §12.5.1: whether a client that sent this Accept header would accept
-# our fixed output, `text/plain; version=0.0.4`. Returns true iff:
-#   - Accept is absent/empty (spec: no Accept => any media type is acceptable), or
-#   - the most-specific matching media range has q > 0.
+# RFC 9110 §12.5.1 content negotiation. Returns the highest-q supported format
+# for this Accept header, or `nothing` (→ HTTP 406) if none matches.
 #
-# We currently emit exactly one format, so this is a boolean gate rather than a
-# preference-ordered picker. When a second format (OpenMetrics, protobuf) lands,
-# this needs to grow into "pick the highest-q supported entry" and echo the
-# chosen Content-Type. Any `version` parameter on the Accept entry must equal
-# `0.0.4` to match; other non-q parameters (e.g. `charset`) are ignored —
-# Prometheus scrapers don't send them as filters in practice.
-accepts_prom_text_004(http::HTTP.Stream) =
-    accepts_prom_text_004(HTTP.header(http.message, "Accept"))
+# Absent/empty Accept means any media type is acceptable — we default to
+# PROM_TEXT_004 to preserve pre-negotiation behavior. Ties in q resolve to the
+# earlier entry in SUPPORTED_FORMATS (tuple-order preference).
+#
+# Version matching is exact string comparison against `string(f.version)`;
+# `version` absent in the Accept entry is treated as "any", so a client that
+# writes `application/openmetrics-text` (no version) still matches OpenMetrics
+# 1.0.0. `charset` and other non-q parameters are ignored — Prometheus
+# scrapers don't send them as filters in practice.
+pick_format(http::HTTP.Stream) =
+    pick_format(HTTP.header(http.message, "Accept"))
 
-function accepts_prom_text_004(accept::AbstractString)
-    isempty(strip(accept)) && return true
+function pick_format(accept::AbstractString)::Union{MetricFormat, Nothing}
+    isempty(strip(accept)) && return PROM_TEXT_004
+    best_format = nothing
+    best_q = 0.0
+    for f in SUPPORTED_FORMATS
+        q = accept_score(accept, f)
+        if q > best_q
+            best_q = q
+            best_format = f
+        end
+    end
+    return best_format
+end
+
+# Effective q-value for a single format `f` given an Accept header.
+# 0.0 means "not acceptable" (either no matching entry, or the most-specific
+# matching entry has q=0). Uses RFC precedence: the most-specific matching
+# range's q wins over less specific ranges.
+function accept_score(accept::AbstractString, f::MetricFormat)::Float64
+    target_type, target_subtype = split(media_type(f), '/'; limit = 2)
+    target_version = string(f.version)
     best_specificity = -1
     best_q = 0.0
     for entry in eachsplit(accept, ',')
         parts = eachsplit(entry, ';')
-        media = lowercase(strip(first(parts)))
-        slash = findfirst('/', media)
-        slash === nothing && continue
-        type = SubString(media, 1, prevind(media, slash))
-        subtype = SubString(media, nextind(media, slash))
+        media = split(lowercase(strip(first(parts))), '/'; limit = 2)
+        length(media) == 2 || continue
+        entry_type, entry_subtype = media
         q = 1.0
         version_param = nothing
         for param in Iterators.drop(parts, 1)
-            kv = strip(param)
-            eq = findfirst('=', kv)
-            eq === nothing && continue
-            key = lowercase(strip(SubString(kv, 1, prevind(kv, eq))))
-            val = strip(SubString(kv, nextind(kv, eq)))
+            kv = split(strip(param), '='; limit = 2)
+            length(kv) == 2 || continue
+            key = lowercase(strip(kv[1]))
+            val = strip(kv[2])
             if length(val) >= 2 && first(val) == '"' && last(val) == '"'
-                val = SubString(val, 2, prevind(val, lastindex(val)))
+                val = chop(val; head = 1, tail = 1)
             end
             if key == "q"
                 q = something(tryparse(Float64, val), 0.0)
@@ -1149,14 +1218,14 @@ function accepts_prom_text_004(accept::AbstractString)
                 version_param = val
             end
         end
-        specificity = if type == "*" && subtype == "*"
+        specificity = if entry_type == "*" && entry_subtype == "*"
             0
-        elseif type == "text" && subtype == "*"
+        elseif entry_type == target_type && entry_subtype == "*"
             1
-        elseif type == "text" && subtype == "plain"
+        elseif entry_type == target_type && entry_subtype == target_subtype
             if version_param === nothing
                 2
-            elseif version_param == "0.0.4"
+            elseif version_param == target_version
                 3
             else
                 -1
@@ -1170,7 +1239,7 @@ function accepts_prom_text_004(accept::AbstractString)
             best_q = q
         end
     end
-    return best_specificity >= 0 && best_q > 0
+    return best_specificity >= 0 ? best_q : 0.0
 end
 
 gzip_accepted(http::HTTP.Stream) =
@@ -1209,17 +1278,19 @@ The caller is responsible for checking e.g. the HTTP method and URI target. For
 HEAD requests this method do not write a body, however.
 """
 function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; compress::Bool = true)
-    # Content negotiation: we only speak text/plain;version=0.0.4. If the client
-    # sent an Accept header that excludes it, return 406. See REVIEW.md E1.
-    # Signal to shared caches that the response depends on both Accept (200 vs
-    # 406) and Accept-Encoding (gzip vs identity). RFC 9110 §12.5.5.
+    # Signal to shared caches that the response depends on both Accept (format
+    # picked / 406) and Accept-Encoding (gzip vs identity). RFC 9110 §12.5.5.
     HTTP.setheader(http, "Vary" => "Accept, Accept-Encoding")
-    if !accepts_prom_text_004(http)
+    # Content negotiation: pick the highest-q supported format from Accept.
+    format = pick_format(http)
+    if format === nothing
         HTTP.setstatus(http, 406)
         HTTP.setheader(http, "Content-Type" => "text/plain; charset=utf-8")
         HTTP.startwrite(http)
         if http.message.method != "HEAD"
-            write(http, "406 Not Acceptable: server only produces $(CONTENT_TYPE_LATEST)\n")
+            write(http, "406 Not Acceptable: server produces one of ")
+            join(http, (content_type(f) for f in SUPPORTED_FORMATS), ", ")
+            write(http, "\n")
         end
         return
     end
@@ -1229,7 +1300,7 @@ function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; co
     end
     # Create the response
     HTTP.setstatus(http, 200)
-    HTTP.setheader(http, "Content-Type" => CONTENT_TYPE_LATEST)
+    HTTP.setheader(http, "Content-Type" => content_type(format))
     if compress
         HTTP.setheader(http, "Content-Encoding" => "gzip")
     end
@@ -1241,7 +1312,7 @@ function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; co
             buf = BufferStream()
             gzstream = GzipCompressorStream(buf)
             tsk = @async try
-                expose_io(gzstream, reg)
+                expose_io(gzstream, reg, format)
             finally
                 # Close the compressor stream to free resources in zlib and
                 # to let the write(http, buf) below finish.
@@ -1262,7 +1333,7 @@ function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; co
                 rethrow()
             end
         else
-            expose_io(http, reg)
+            expose_io(http, reg, format)
         end
     end
     return
