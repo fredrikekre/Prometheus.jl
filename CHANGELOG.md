@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+ - New method `expose(::HTTP.Request, reg = DEFAULT_REGISTRY; compress = true)` that returns
+   an `HTTP.Response`, for use in request handler functions (e.g. with `HTTP.serve` or an
+   `HTTP.Router`). It supports the same content negotiation (`Accept`), gzip compression
+   (`Accept-Encoding`), and `HEAD` handling as `expose(::HTTP.Stream)`.
 ### Changed
  - `expose(::HTTP.Stream)` now gzip-compresses directly into the HTTP stream instead of
    piping through an intermediate buffer stream and a background task. This removes the
