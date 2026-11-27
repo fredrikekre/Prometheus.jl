@@ -1360,7 +1360,8 @@ function expose(req::HTTP.Request, reg::CollectorRegistry = DEFAULT_REGISTRY; co
     end
     # HEAD: return an empty body without a Content-Length header. Computing the body just to
     # report its length isn't worth it, and HTTP.jl 1.x would write a non-empty body to the
-    # wire even for HEAD requests.
+    # wire even for HEAD requests. Note that HTTP.jl 2.x currently sends
+    # `Content-Length: 0` in this case, see https://github.com/JuliaWeb/HTTP.jl/issues/1581.
     if is_head
         body = UInt8[]
     else
