@@ -1023,6 +1023,7 @@ end
         @test HTTP.header(r, "Content-Type") == PT_CT
         @test HTTP.header(r, "Vary") == "Accept, Accept-Encoding"
         @test HTTP.header(r, "Content-Encoding", nothing) === nothing
+        @test HTTP.header(r, "Content-Length") == string(length(r.body))
         @test String(r.body) == reference_output
     end
     let r = Prometheus.expose(HTTP.Request("GET", "/metrics"), reg)
@@ -1037,6 +1038,7 @@ end
         r = Prometheus.expose(req)
         @test HTTP.header(r, "Content-Encoding") == "gzip"
         @test r.body[1:2] == [0x1f, 0x8b] # gzip magic bytes
+        @test HTTP.header(r, "Content-Length") == string(length(r.body))
         r = Prometheus.expose(req; compress = false)
         @test HTTP.header(r, "Content-Encoding", nothing) === nothing
         @test String(r.body) == reference_output
@@ -1045,6 +1047,7 @@ end
         @test r.status == 200
         @test HTTP.header(r, "Content-Type") == PT_CT
         @test HTTP.header(r, "Content-Encoding") == "gzip"
+        @test HTTP.header(r, "Content-Length", nothing) === nothing
         @test isempty(r.body)
     end
     let req = HTTP.Request("GET", "/metrics", ["Accept" => "application/vnd.google.protobuf"])
@@ -1052,6 +1055,7 @@ end
         @test r.status == 406
         @test HTTP.header(r, "Content-Type") == "text/plain; charset=utf-8"
         @test HTTP.header(r, "Vary") == "Accept, Accept-Encoding"
+        @test HTTP.header(r, "Content-Length") == string(length(r.body))
         @test startswith(String(r.body), "406 Not Acceptable")
         @test isempty(Prometheus.expose(HTTP.Request("HEAD", "/metrics", req.headers)).body)
     end
@@ -1068,6 +1072,7 @@ end
         @test r.status == 200
         @test HTTP.header(r, "Content-Type") == PT_CT
         @test String(r.body) == reference_output # HTTP.jl decompresses gzip
+        @test HTTP.header(r, "Transfer-Encoding", nothing) === nothing
     end
     r = HTTP.request("GET", "http://localhost:8124/metrics", ["Accept" => "application/openmetrics-text"])
     @test String(r.body) == openmetrics_output

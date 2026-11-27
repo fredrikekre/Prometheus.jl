@@ -1350,6 +1350,7 @@ function expose(req::HTTP.Request, reg::CollectorRegistry = DEFAULT_REGISTRY; co
     if format === nothing
         push!(headers, "Content-Type" => "text/plain; charset=utf-8")
         body = is_head ? UInt8[] : Vector{UInt8}(sprint(write_not_acceptable))
+        is_head || push!(headers, "Content-Length" => string(length(body)))
         return HTTP.Response(406, headers, body)
     end
     compress = compress && gzip_accepted(HTTP.header(req, "Accept-Encoding"))
@@ -1357,6 +1358,9 @@ function expose(req::HTTP.Request, reg::CollectorRegistry = DEFAULT_REGISTRY; co
     if compress
         push!(headers, "Content-Encoding" => "gzip")
     end
+    # HEAD: return an empty body without a Content-Length header. Computing the body just to
+    # report its length isn't worth it, and HTTP.jl 1.x would write a non-empty body to the
+    # wire even for HEAD requests.
     if is_head
         body = UInt8[]
     else
@@ -1366,6 +1370,9 @@ function expose(req::HTTP.Request, reg::CollectorRegistry = DEFAULT_REGISTRY; co
         if compress
             body = transcode(GzipCompressor, body)
         end
+        # Set Content-Length explicitly: HTTP.jl 2.x would add it automatically, but
+        # HTTP.jl 1.x would otherwise use chunked transfer encoding.
+        push!(headers, "Content-Length" => string(length(body)))
     end
     return HTTP.Response(200, headers, body)
 end
