@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - `expose(::HTTP.Stream)` now gzip-compresses directly into the HTTP stream instead of
    piping through an intermediate buffer stream and a background task. This removes the
    dependency on SimpleBufferStream.jl and adds a direct dependency on
-   TranscodingStreams.jl (already an indirect dependency through CodecZlib.jl).
+   TranscodingStreams.jl (already an indirect dependency through CodecZlib.jl). ([#38])
 
 ## [v1.6.0] - 2026-07-09
 ### Added
@@ -152,3 +152,4 @@ See [README.md](README.md) for details and documentation.
 [#34]: https://github.com/fredrikekre/Prometheus.jl/issues/34
 [#35]: https://github.com/fredrikekre/Prometheus.jl/issues/35
 [#36]: https://github.com/fredrikekre/Prometheus.jl/issues/36
+[#38]: https://github.com/fredrikekre/Prometheus.jl/issues/38
