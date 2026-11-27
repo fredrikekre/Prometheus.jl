@@ -4,7 +4,6 @@ module Prometheus
 
 using CodecZlib: GzipCompressorStream
 using HTTP: HTTP
-using SimpleBufferStream: BufferStream
 
 if VERSION >= v"1.11.0-DEV.469"
     let str = """
@@ -1235,6 +1234,21 @@ function gzip_accepted(accept_encoding::AbstractString)
     return something(gzip_qvalue, wildcard_qvalue) > 0
 end
 
+# Minimal write-only wrapper around `HTTP.Stream` used as the sink for the gzip
+# compressor. HTTP.jl 1.x's `unsafe_write(::HTTP.Stream, p, n)` returns the number
+# of bytes written *including* chunked transfer-encoding framing, i.e. more than `n`,
+# which breaks TranscodingStreams' buffer bookkeeping. This wrapper reports `n`.
+struct HTTPStreamWriter <: IO
+    http::HTTP.Stream
+end
+function Base.unsafe_write(w::HTTPStreamWriter, p::Ptr{UInt8}, n::UInt)
+    unsafe_write(w.http, p, n)
+    return Int(n)
+end
+Base.write(w::HTTPStreamWriter, x::UInt8) = unsafe_write(w, Ref(x), UInt(1))
+Base.flush(w::HTTPStreamWriter) = flush(w.http)
+Base.isopen(w::HTTPStreamWriter) = isopen(w.http)
+
 """
     expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; kwargs...)
 
@@ -1275,25 +1289,19 @@ function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; co
     # correct, but at least we skip writing the body for HEAD requests.
     if http.message.method != "HEAD"
         if compress
-            buf = BufferStream()
-            gzstream = GzipCompressorStream(buf)
-            tsk = @async try
-                expose_io(gzstream, reg, format)
-            finally
-                # Close the compressor stream to free resources in zlib and
-                # to let the write(http, buf) below finish.
-                close(gzstream)
-            end
+            # Compress directly into the HTTP stream. `stop_on_end = true` makes
+            # `close(gzstream)` finish the gzip stream and free zlib resources
+            # without closing `http` (requires TranscodingStreams >= 0.10.5).
+            gzstream = GzipCompressorStream(HTTPStreamWriter(http); stop_on_end = true)
             try
-                write(http, buf)
-                wait(tsk)
+                expose_io(gzstream, reg, format)
+                close(gzstream)
             catch
-                # If write(http, buf) fails we close buf to notify the compressor task.
-                # Waiting for the task will then throw an expected error but this is
-                # necessary in order to make sure the compressor task terminates.
-                close(buf)
+                # Writing to `http` failed (e.g. client disconnect). Still close the
+                # compressor to free zlib resources, but don't let a second error from
+                # flushing to the broken stream mask the original one.
                 try
-                    wait(tsk)
+                    close(gzstream)
                 catch
                 end
                 rethrow()

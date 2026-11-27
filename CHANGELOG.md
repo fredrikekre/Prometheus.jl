@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Changed
+ - `expose(::HTTP.Stream)` now gzip-compresses directly into the HTTP stream instead of
+   piping through an intermediate buffer stream and a background task. This removes the
+   dependency on SimpleBufferStream.jl and adds a direct dependency on
+   TranscodingStreams.jl (already an indirect dependency through CodecZlib.jl).
+
 ## [v1.6.0] - 2026-07-09
 ### Added
  - OpenMetrics 1.0.0 text output (`application/openmetrics-text; version=1.0.0; charset=utf-8`).
