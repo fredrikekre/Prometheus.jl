@@ -257,10 +257,10 @@ uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 version = "1.11.0"
 
 [[deps.Prometheus]]
-deps = ["CodecZlib", "HTTP", "SimpleBufferStream"]
+deps = ["CodecZlib", "HTTP", "TranscodingStreams"]
 path = ".."
 uuid = "f25c1797-fe98-4e0c-b252-1b4fe3b6bde6"
-version = "1.6.0"
+version = "1.7.0"
 
 [[deps.REPL]]
 deps = ["InteractiveUtils", "Markdown", "Sockets", "StyledStrings", "Unicode"]

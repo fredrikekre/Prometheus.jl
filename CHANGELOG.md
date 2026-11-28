@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v1.7.0] - 2026-11-28
 ### Added
  - New method `expose(::HTTP.Request, reg = DEFAULT_REGISTRY; compress = true)` that returns
    an `HTTP.Response`, for use in request handler functions (e.g. with `HTTP.serve` or an
@@ -144,6 +144,7 @@ See [README.md](README.md) for details and documentation.
 [v1.5.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.5.0
 [v1.5.1]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.5.1
 [v1.6.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.6.0
+[v1.7.0]: https://github.com/fredrikekre/Prometheus.jl/releases/tag/v1.7.0
 [#6]: https://github.com/fredrikekre/Prometheus.jl/issues/6
 [#7]: https://github.com/fredrikekre/Prometheus.jl/issues/7
 [#10]: https://github.com/fredrikekre/Prometheus.jl/issues/10
