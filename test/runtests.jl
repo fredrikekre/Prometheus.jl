@@ -1002,6 +1002,91 @@ end
     wait(server)
 end
 
+@testset "Prometheus.expose(::HTTP.Request)" begin
+    empty!(Prometheus.DEFAULT_REGISTRY.collectors)
+    Prometheus.inc(Prometheus.Counter("prom_counter", "Counting things"))
+    Prometheus.set(Prometheus.Gauge("prom_gauge", "Gauging things"), 1.2)
+    reference_output = sprint(Prometheus.expose)
+    openmetrics_output = sprint(
+        (io, r) -> Prometheus.expose_io(io, r, Prometheus.OPENMETRICS_TEXT_100),
+        Prometheus.DEFAULT_REGISTRY,
+    )
+    reg = Prometheus.CollectorRegistry()
+    Prometheus.inc(Prometheus.Counter("other_counter", "Counting other things"; registry = reg))
+    reg_output = sprint(Prometheus.expose, reg)
+    # Direct calls
+    PT_CT = "text/plain; version=0.0.4; charset=utf-8"
+    OM_CT = "application/openmetrics-text; version=1.0.0; charset=utf-8"
+    let r = Prometheus.expose(HTTP.Request("GET", "/metrics"))
+        @test r isa HTTP.Response
+        @test r.status == 200
+        @test HTTP.header(r, "Content-Type") == PT_CT
+        @test HTTP.header(r, "Vary") == "Accept, Accept-Encoding"
+        @test HTTP.header(r, "Content-Encoding", nothing) === nothing
+        @test HTTP.header(r, "Content-Length") == string(length(r.body))
+        @test String(r.body) == reference_output
+    end
+    let r = Prometheus.expose(HTTP.Request("GET", "/metrics"), reg)
+        @test String(r.body) == reg_output
+    end
+    let r = Prometheus.expose(HTTP.Request("GET", "/metrics", ["Accept" => "application/openmetrics-text"]))
+        @test r.status == 200
+        @test HTTP.header(r, "Content-Type") == OM_CT
+        @test String(r.body) == openmetrics_output
+    end
+    let req = HTTP.Request("GET", "/metrics", ["Accept-Encoding" => "gzip"])
+        r = Prometheus.expose(req)
+        @test HTTP.header(r, "Content-Encoding") == "gzip"
+        @test r.body[1:2] == [0x1f, 0x8b] # gzip magic bytes
+        @test HTTP.header(r, "Content-Length") == string(length(r.body))
+        r = Prometheus.expose(req; compress = false)
+        @test HTTP.header(r, "Content-Encoding", nothing) === nothing
+        @test String(r.body) == reference_output
+    end
+    let r = Prometheus.expose(HTTP.Request("HEAD", "/metrics", ["Accept-Encoding" => "gzip"]))
+        @test r.status == 200
+        @test HTTP.header(r, "Content-Type") == PT_CT
+        @test HTTP.header(r, "Content-Encoding") == "gzip"
+        @test HTTP.header(r, "Content-Length", nothing) === nothing
+        @test isempty(r.body)
+    end
+    let req = HTTP.Request("GET", "/metrics", ["Accept" => "application/vnd.google.protobuf"])
+        r = Prometheus.expose(req)
+        @test r.status == 406
+        @test HTTP.header(r, "Content-Type") == "text/plain; charset=utf-8"
+        @test HTTP.header(r, "Vary") == "Accept, Accept-Encoding"
+        @test HTTP.header(r, "Content-Length") == string(length(r.body))
+        @test startswith(String(r.body), "406 Not Acceptable")
+        @test isempty(Prometheus.expose(HTTP.Request("HEAD", "/metrics", req.headers)).body)
+    end
+    # End-to-end with a request handler server
+    server = HTTP.serve!(8124) do req
+        if req.target == "/metrics"
+            return Prometheus.expose(req)
+        else
+            return HTTP.Response(404)
+        end
+    end
+    for enc in ("gzip", "identity")
+        r = HTTP.request("GET", "http://localhost:8124/metrics", ["Accept-Encoding" => enc])
+        @test r.status == 200
+        @test HTTP.header(r, "Content-Type") == PT_CT
+        @test String(r.body) == reference_output # HTTP.jl decompresses gzip
+        @test HTTP.header(r, "Transfer-Encoding", nothing) === nothing
+    end
+    r = HTTP.request("GET", "http://localhost:8124/metrics", ["Accept" => "application/openmetrics-text"])
+    @test String(r.body) == openmetrics_output
+    @test isempty(HTTP.request("HEAD", "http://localhost:8124/metrics").body)
+    r = HTTP.request(
+        "GET", "http://localhost:8124/metrics", ["Accept" => "application/vnd.google.protobuf"];
+        status_exception = false,
+    )
+    @test r.status == 406
+    # Clean up
+    close(server)
+    wait(server)
+end
+
 @testset "Utilities" begin
     x = 1
     err = try

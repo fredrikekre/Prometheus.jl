@@ -2,7 +2,7 @@
 
 module Prometheus
 
-using CodecZlib: GzipCompressorStream
+using CodecZlib: GzipCompressor, GzipCompressorStream
 using HTTP: HTTP
 
 if VERSION >= v"1.11.0-DEV.469"
@@ -1207,6 +1207,13 @@ function accept_score(accept::AbstractString, f::MetricFormat)::Float64
     return best_specificity >= 0 ? best_q : 0.0
 end
 
+function write_not_acceptable(io::IO)
+    write(io, "406 Not Acceptable: server produces one of ")
+    join(io, (content_type(f) for f in SUPPORTED_FORMATS), ", ")
+    write(io, "\n")
+    return
+end
+
 gzip_accepted(http::HTTP.Stream) =
     gzip_accepted(HTTP.header(http.message, "Accept-Encoding"))
 
@@ -1268,9 +1275,7 @@ function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; co
         HTTP.setheader(http, "Content-Type" => "text/plain; charset=utf-8")
         HTTP.startwrite(http)
         if http.message.method != "HEAD"
-            write(http, "406 Not Acceptable: server produces one of ")
-            join(http, (content_type(f) for f in SUPPORTED_FORMATS), ", ")
-            write(http, "\n")
+            write_not_acceptable(http)
         end
         return
     end
@@ -1311,6 +1316,66 @@ function expose(http::HTTP.Stream, reg::CollectorRegistry = DEFAULT_REGISTRY; co
         end
     end
     return
+end
+
+"""
+    expose(req::HTTP.Request, reg::CollectorRegistry = DEFAULT_REGISTRY; compress::Bool = true) -> HTTP.Response
+
+Export all metrics in `reg` as a `HTTP.Response` for the request `req`. This is useful
+for request handler functions (e.g. with `HTTP.serve` or an `HTTP.Router`) as opposed to
+stream handler functions (see `Prometheus.expose(::HTTP.Stream)`).
+
+The response format is negotiated from the `Accept` header of `req`, and the body is
+gzip-compressed if `compress = true` and the `Accept-Encoding` header of `req` allows
+it. If no supported format is acceptable to the client a `406 Not Acceptable` response is
+returned.
+
+The caller is responsible for checking e.g. the HTTP method and URI target. For
+HEAD requests the returned response has an empty body, however.
+
+# Examples
+```julia
+using HTTP, Prometheus
+
+router = HTTP.Router()
+HTTP.register!(router, "GET", "/metrics", req -> Prometheus.expose(req))
+server = HTTP.serve!(router, 8000)
+```
+"""
+function expose(req::HTTP.Request, reg::CollectorRegistry = DEFAULT_REGISTRY; compress::Bool = true)
+    is_head = req.method == "HEAD"
+    # See expose(::HTTP.Stream) for details.
+    headers = Pair{String, String}["Vary" => "Accept, Accept-Encoding"]
+    format = pick_format(HTTP.header(req, "Accept"))
+    if format === nothing
+        push!(headers, "Content-Type" => "text/plain; charset=utf-8")
+        body = is_head ? UInt8[] : Vector{UInt8}(sprint(write_not_acceptable))
+        is_head || push!(headers, "Content-Length" => string(length(body)))
+        return HTTP.Response(406, headers, body)
+    end
+    compress = compress && gzip_accepted(HTTP.header(req, "Accept-Encoding"))
+    push!(headers, "Content-Type" => content_type(format))
+    if compress
+        push!(headers, "Content-Encoding" => "gzip")
+    end
+    # HEAD: return an empty body without a Content-Length header. Computing the body just to
+    # report its length isn't worth it, and HTTP.jl 1.x would write a non-empty body to the
+    # wire even for HEAD requests. Note that HTTP.jl 2.x currently sends
+    # `Content-Length: 0` in this case, see https://github.com/JuliaWeb/HTTP.jl/issues/1581.
+    if is_head
+        body = UInt8[]
+    else
+        buf = IOBuffer()
+        expose_io(buf, reg, format)
+        body = take!(buf)
+        if compress
+            body = transcode(GzipCompressor, body)
+        end
+        # Set Content-Length explicitly: HTTP.jl 2.x would add it automatically, but
+        # HTTP.jl 1.x would otherwise use chunked transfer encoding.
+        push!(headers, "Content-Length" => string(length(body)))
+    end
+    return HTTP.Response(200, headers, body)
 end
 
 include("gc_collector.jl")
